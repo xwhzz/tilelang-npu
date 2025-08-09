@@ -14,7 +14,11 @@ from tilelang.jit.adapter.wrapper import TLWrapper
 from tilelang.jit.adapter.libgen import LibraryGenerator
 from tilelang.utils.target import determine_target
 from tilelang.utils.language import retrieve_func_from_module
+import os, tempfile, subprocess, shutil, textwrap
 
+def _is_ascend_target(t) -> bool:
+        # t可能是str或tvm Target，统一成str再比较
+        return str(t).lower() == "ascend"
 
 class CtypesKernelAdapter(BaseKernelAdapter):
     """Adapter class that converts TVM/TIR functions to callable CUDA kernels using ctypes.
@@ -64,6 +68,8 @@ class CtypesKernelAdapter(BaseKernelAdapter):
         self.params = params
         self.result_idx = self._legalize_result_idx(result_idx)
         self.kernel_global_source = kernel_global_source
+        self.pass_configs = pass_configs
+        self.verbose = verbose
 
         if isinstance(func_or_mod, tir.PrimFunc):
             self.ir_module = tvm.IRModule({func_or_mod.attrs["global_symbol"]: func_or_mod})
@@ -86,7 +92,17 @@ class CtypesKernelAdapter(BaseKernelAdapter):
 
         self.dynamic_symbolic_map = self._process_dynamic_symbolic()
 
-        self.target = Target.canon_target(determine_target(target))
+        raw_target = determine_target(target)
+        if _is_ascend_target(raw_target):
+            self.target = "ascend"
+        else:
+            self.target = Target.canon_target(raw_target)
+
+        if _is_ascend_target(self.target):
+            self._ascend_build_and_load()
+            self._post_init()
+            return
+        
         self.verbose = verbose
         self.wrapper = TLWrapper(self.target)
         self.lib_generator = LibraryGenerator(self.target)
@@ -142,8 +158,28 @@ class CtypesKernelAdapter(BaseKernelAdapter):
 
         adapter.dynamic_symbolic_map = adapter._process_dynamic_symbolic()
 
-        adapter.target = Target.canon_target(determine_target(target))
+        raw_target = determine_target(target)
+        if _is_ascend_target(raw_target):
+            adapter.target = "ascend"
+        else:
+            adapter.target = Target.canon_target(raw_target)
+
         adapter.verbose = verbose
+
+        if _is_ascend_target(adapter.target):
+            # Ascend：直接调用ctypes加载，不调用lib_generator / init
+            if not os.path.exists(kernel_lib_path):
+                raise FileNotFoundError(kernel_lib_path)
+            adapter.lib = ctypes.CDLL(kernel_lib_path)
+            # 绑定符号
+            if not hasattr(adapter.lib, "call"):
+                raise AttributeError("[Ascend] symbol 'call' not found in the shared library.")
+            adapter.lib.call.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+            adapter.lib.call.restype  = None
+            adapter._post_init()
+            return adapter
+        
+        # 非Ascend：保持原有逻辑
         adapter.lib_generator = LibraryGenerator(adapter.target)
         adapter.lib = adapter.lib_generator.load_lib(lib_path=kernel_lib_path)
         adapter.lib.init()
@@ -176,7 +212,7 @@ class CtypesKernelAdapter(BaseKernelAdapter):
         ctypes_args = [
             ctypes.c_void_p(arr.data_ptr()) if not isinstance(arr, int) else arr for arr in args
         ]
-        ctypes_args.append(ctypes.c_void_p(stream))
+        ctypes_args.append(ctypes.c_void_p(stream if stream is not None else 0))
         self.lib.call(*ctypes_args)
 
     def _warp_forward_from_prebuild_lib(self,
@@ -216,7 +252,17 @@ class CtypesKernelAdapter(BaseKernelAdapter):
                         shape.append(ins[ref_tensor_idx].shape[ref_shape_idx])
                     else:  # Already converted to Python int during initialization
                         shape.append(s)
-                device = ins[0].device if len(ins) > 0 else torch.cuda.current_device()
+
+                if len(ins) > 0:
+                    device = ins[0].device
+                else:
+                    if _is_ascend_target(self.target):
+                        device = torch.device("npu")
+                    elif str(self.target).startswith("cuda") and torch.cuda.is_available():
+                        device = torch.device("cuda", torch.cuda.current_device())
+                    else:
+                        device = torch.device("cpu")
+                
                 tensor = torch.empty(*shape, dtype=dtype, device=device)
             else:
                 tensor = ins[ins_idx]
@@ -224,12 +270,15 @@ class CtypesKernelAdapter(BaseKernelAdapter):
             args.append(tensor)
 
         # dynamic symbolics
-        for _, (buffer_idx, shape_idx) in self.dynamic_symbolic_map.items():
-            args.append(ins[buffer_idx].shape[shape_idx])
+        if not _is_ascend_target(self.target):
+            for _, (buffer_idx, shape_idx) in self.dynamic_symbolic_map.items():
+                args.append(ins[buffer_idx].shape[shape_idx])
 
         # if stream is not None, we need to pass the stream to the library
         if stream is None:
-            if str(self.target).startswith("cuda") and torch.cuda.is_available():
+            if _is_ascend_target(self.target):
+                stream = torch.npu.current_stream()._as_parameter_
+            elif str(self.target).startswith("cuda") and torch.cuda.is_available():
                 stream = torch.cuda.current_stream().cuda_stream
             else:
                 stream = 0
@@ -253,17 +302,25 @@ class CtypesKernelAdapter(BaseKernelAdapter):
     @property
     def srcpath(self):
         """Returns the source path of the compiled library."""
-        return self.lib_generator.srcpath
+        if hasattr(self, "lib_generator"):
+            return self.lib_generator.srcpath
+        return getattr(self, "_asc_workdir", None)
 
     @property
     def libpath(self):
         """Returns the path to the compiled library."""
-        return self.lib_generator.libpath
+        if hasattr(self, "lib_generator"):
+            return self.lib_generator.libpath
+        if hasattr(self, "_asc_workdir"):
+            return os.path.join(self._asc_workdir, "kernel_lib.so")
+        return None
 
     @property
     def lib_code(self):
         """Returns the code of the compiled library."""
-        return self.lib_generator.lib_code
+        if hasattr(self, "lib_generator"):
+            return self.lib_generator.lib_code
+        return self.kernel_global_source # Ascend返回wrapped/source
 
     @property
     def is_dynamic(self):
@@ -277,3 +334,253 @@ class CtypesKernelAdapter(BaseKernelAdapter):
         else:
             assert self.wrapped_source is not None, "Wrapped source is not available"
             return self.wrapped_source
+        
+    def _ascend_build_and_load(self):
+        assert self.kernel_global_source is not None, "Ascend path requires kernel_global_source (the generated Ascend C++)."
+
+        # 1. 准备临时工作目录
+        self._asc_workdir = tempfile.mkdtemp(prefix="tl_ascend_")
+        cpp_name = "tl_kernel.cpp"
+        so_name  = "kernel_lib.so"
+
+        # 2. 写入common.h与kernel
+        self._asc_write_file("common.h", self._ascend_common_h_text())
+        self._asc_write_file(cpp_name, self.kernel_global_source)
+
+        # 3. 生成build.sh
+        self._asc_write_file("build.sh", self._ascend_build_sh_text(cpp_name, so_name))
+        os.chmod(os.path.join(self._asc_workdir, "build.sh"), 0o755)
+
+        # 4. 编译
+        env = os.environ.copy()
+        try:
+            subprocess.check_call(["bash", "build.sh"], cwd=self._asc_workdir, env=env)
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"[Ascend] bisheng build failed: {e}") from e
+        
+        # 5. 加载.so
+        so_path = os.path.join(self._asc_workdir, so_name)
+        if not os.path.exists(so_path):
+            raise FileNotFoundError(f"[Ascend] built library not found: {so_path}")
+        self.lib = ctypes.CDLL(so_path)
+
+        # 6. 绑定符号
+        if not hasattr(self.lib, "call"):
+            raise AttributeError("[Ascend] symbol 'call' not found in the shared library.")
+        # 签名默认设为：void* a, void* b, void* c, void* stream
+        self.lib.call.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+        self.lib.call.restype  = None
+
+    def _asc_write_file(self, name: str, content: str):
+        path = os.path.join(self._asc_workdir, name)
+        with open(path, "w") as f:
+            f.write(content)
+        return path
+    
+    def _ascend_common_h_text(self) -> str:
+        return textwrap.dedent(r"""
+#include "catlass/catlass.hpp"
+#include "catlass/arch/arch.hpp"
+
+
+#include "catlass/detail/tag_to_layout.hpp"
+#include "catlass/epilogue/tile/copy_gm_to_ub.hpp"
+#include "catlass/epilogue/tile/copy_ub_to_gm.hpp"
+#include "catlass/gemm/block/block_swizzle.hpp"
+#include "catlass/gemm/tile/tile_copy.hpp"
+#include "catlass/layout/layout.hpp"
+
+#include "tla/layout.hpp"
+#include "tla/tensor.hpp"
+
+namespace tl::ascend {
+using namespace Catlass;
+using namespace tla;
+using namespace Catlass::Gemm::Tile;
+using namespace Catlass::Gemm::Block;
+using namespace Catlass::Epilogue::Tile;
+using namespace AscendC;
+
+using ArchTag = Arch::AtlasA2;
+// using LayoutGM = layout::RowMajor;
+
+using LayoutL0A = layout::zZ;
+using LayoutL0B = layout::nZ;
+
+template <typename T, typename LayoutGM, typename LayoutL1, uint32_t srcM, uint32_t srcN,
+          uint32_t dstM, uint32_t dstN>
+CATLASS_DEVICE void copy_gm_to_l1(LocalTensor<T> dstTensor,
+                                  GlobalTensor<T> srcTensor) {
+  auto layout = MakeLayoutFromTag(LayoutGM{srcM, srcN});
+  auto src_LAYOUT = MakeLayoutTile(layout, tla::MakeShape(dstM, dstN));
+  auto src = tla::MakeTensor<decltype(srcTensor), decltype(src_LAYOUT),
+                             AscendC::TPosition::GM>(srcTensor, src_LAYOUT);
+
+  using LayoutL1_ = Catlass::detail::TagToLayout_t<T, LayoutL1>;
+  constexpr auto layoutInL1 = tla::MakeLayout<T, LayoutL1_>(dstM, dstN);
+  auto dst = tla::MakeTensor<decltype(dstTensor), decltype(layoutInL1),
+                             AscendC::TPosition::A1>(dstTensor, layoutInL1);
+
+  TileCopyTla<ArchTag, decltype(src), decltype(dst)> tileCopier;
+  tileCopier(dst, src);
+}
+
+template <typename T, typename LayoutL1, uint32_t srcM, uint32_t srcN,
+          uint32_t dstM, uint32_t dstN>
+CATLASS_DEVICE void copy_l1_to_l0a(LocalTensor<T> dstTensor,
+                                   LocalTensor<T> srcTensor) {
+  using LayoutL1_ = Catlass::detail::TagToLayout_t<T, LayoutL1>;
+  constexpr auto layout = tla::MakeLayout<T, LayoutL1_>(srcM, srcN);
+  auto src_LAYOUT = MakeLayoutTile(layout, tla::MakeShape(dstM, dstN));
+
+  auto src = MakeTensor<decltype(srcTensor), decltype(src_LAYOUT),
+                        AscendC::TPosition::A1>(srcTensor, src_LAYOUT);
+
+  using LayoutL0A_ = Catlass::detail::TagToLayout_t<T, LayoutL0A>;
+  constexpr auto layoutAInL0 = tla::MakeLayout<T, LayoutL0A_>(dstM, dstN);
+  auto dst = tla::MakeTensor<decltype(dstTensor), decltype(layoutAInL0),
+                             AscendC::TPosition::A2>(dstTensor, layoutAInL0);
+
+  TileCopyTla<ArchTag, decltype(src), decltype(dst)> tileCopier;
+  tileCopier(dst, src);
+}
+
+template <typename T, typename LayoutL1, uint32_t srcM, uint32_t srcN,
+          uint32_t dstM, uint32_t dstN>
+CATLASS_DEVICE void copy_l1_to_l0b(LocalTensor<T> dstTensor,
+                                   LocalTensor<T> srcTensor) {
+  using LayoutL1_ = Catlass::detail::TagToLayout_t<T, LayoutL1>;
+  constexpr auto LAYOUT = tla::MakeLayout<T, LayoutL1_>(srcM, srcN);
+  auto src_LAYOUT = MakeLayoutTile(LAYOUT, tla::MakeShape(dstM, dstN));
+  ;
+
+  auto src = MakeTensor<decltype(srcTensor), decltype(src_LAYOUT),
+                        AscendC::TPosition::A1>(srcTensor, src_LAYOUT);
+
+  using LayoutL0B_ = Catlass::detail::TagToLayout_t<T, LayoutL0B>;
+  constexpr auto layoutBInL0 = tla::MakeLayout<T, LayoutL0B_>(dstM, dstN);
+  auto dst = tla::MakeTensor<decltype(dstTensor), decltype(layoutBInL0),
+                             AscendC::TPosition::B2>(dstTensor, layoutBInL0);
+
+  TileCopyTla<ArchTag, decltype(src), decltype(dst)> tileCopier;
+  tileCopier(dst, src);
+}
+
+template <typename T1, typename T2, uint32_t M, uint32_t N, uint32_t K,
+          bool init>
+CATLASS_DEVICE void mma(LocalTensor<T1> A, LocalTensor<T1> B, LocalTensor<T2> C,
+                        uint8_t unitFlag = 0) {
+  MmadParams mmadParams;
+  mmadParams.m = M;
+  mmadParams.n = N;
+  mmadParams.k = K;
+  mmadParams.cmatrixInitVal = init;
+  // mmadParams.unitFlag = unitFlag;
+
+  Mmad(C, A, B, mmadParams);
+
+  constexpr uint32_t PIPE_M_BARRIER_THRESHOLD = 10;
+  if constexpr ((M / C0_NUM_PER_FRACTAL) * (N / C0_NUM_PER_FRACTAL) <
+                PIPE_M_BARRIER_THRESHOLD) {
+    PipeBarrier<PIPE_M>();
+  }
+}
+
+template <typename T1, typename T2, typename LayoutGM, uint32_t srcM, uint32_t srcN, uint32_t dstM,
+          uint32_t dstN>
+CATLASS_DEVICE void copy_l0c_to_gm(GlobalTensor<T2> dstTensor,
+                                   LocalTensor<T1> srcTensor,
+                                   uint8_t unitFlag = 0) {
+  auto layoutInL0C = tla::MakeLayoutL0C(srcM, srcN); // TODO (xwh): round up?
+  auto src = tla::MakeTensor<decltype(srcTensor), decltype(layoutInL0C),
+                             AscendC::TPosition::CO1>(srcTensor, layoutInL0C);
+  LayoutGM gm{dstM, dstN};
+  auto layout = MakeLayoutFromTag(gm);
+  auto dTensor = MakeTensor(dstTensor, layout, Arch::PositionGM{});
+  auto layout_ = dTensor.layout();
+  auto dst_LAYOUT = MakeLayoutTile(layout_, tla::MakeShape(srcM, srcN));
+  auto dst = MakeTensor<decltype(dstTensor), decltype(dst_LAYOUT),
+                        AscendC::TPosition::GM>(dstTensor, dst_LAYOUT);
+
+  CopyL0CToGmTla<ArchTag, decltype(src), decltype(dst)> tileCopier;
+  tileCopier(dst, src, unitFlag);
+}
+
+template <uint32_t M, uint32_t N, uint32_t K, uint32_t block_M,
+          uint32_t block_N, uint32_t SwizzleOffset = 1,
+          uint32_t SwizzleDirection = 0>
+CATLASS_DEVICE auto thread_block_swizzle(uint64_t pid) {
+  GemmCoord problem_shape = GemmCoord(M, N, K);
+  MatrixCoord tile_shape = MatrixCoord(block_M, block_N);
+
+  GemmIdentityBlockSwizzle swizzle =
+      GemmIdentityBlockSwizzle<SwizzleOffset, SwizzleDirection>(problem_shape,
+                                                                tile_shape);
+
+  auto cols = swizzle.loopsMN.column();
+
+  auto coord = swizzle.GetBlockCoord(pid);
+
+  return coord.m() * cols + coord.n();
+}
+
+template <typename T, uint32_t srcM, uint32_t srcN, uint32_t dstM,
+          uint32_t dstN>
+CATLASS_DEVICE void copy_gm_to_ub(LocalTensor<T> dstTensor,
+                                  GlobalTensor<T> srcTensor) {
+  using LayoutSrc = layout::RowMajor;
+  using LayoutDst = layout::RowMajor;
+
+  using GType = Gemm::GemmType<T, layout::RowMajor>;
+
+  auto copy_ = CopyGm2Ub<ArchTag, GType>();
+
+  copy_(dstTensor, srcTensor, LayoutDst{dstM, dstN},
+        LayoutSrc{dstM, dstN, srcN}); // row, col, ldm
+}
+
+template <typename T, uint32_t srcM, uint32_t srcN, uint32_t dstM,
+          uint32_t dstN>
+CATLASS_DEVICE void copy_ub_to_gm(GlobalTensor<T> dstTensor,
+                                  LocalTensor<T> srcTensor) {
+  using LayoutDst = layout::RowMajor;
+  using LayoutSrc = layout::RowMajor;
+
+  using GType = Gemm::GemmType<T, layout::RowMajor>;
+  auto copy_ = CopyUb2Gm<ArchTag, GType>();
+  copy_(dstTensor, srcTensor, LayoutDst{srcM, srcN, dstN},
+        LayoutSrc{srcM, srcN});
+}
+
+template <typename T, uint32_t Len>
+CATLASS_DEVICE void tile_add(LocalTensor<T> const &ubIn0,
+                             LocalTensor<T> const &ubIn1,
+                             LocalTensor<T> const &ubOut) {
+  AscendC::Add(ubOut, ubIn0, ubIn1, Len);
+}
+
+} // namespace tl::ascend
+            """)
+    
+    def _ascend_build_sh_text(self, cpp_name: str, so_name: str) -> str:
+        return textwrap.dedent(f"""\
+        set -e
+        bisheng --cce-soc-version=Ascend910B3 --cce-soc-core-type=CubeCore \
+            -O2 -std=c++17 -xcce \
+            -mllvm -cce-aicore-stack-size=0x8000 \
+            -mllvm -cce-aicore-function-stack-size=0x8000 \
+            -mllvm -cce-aicore-record-overflow=true \
+            -mllvm -cce-aicore-addr-transform \
+            -mllvm -cce-aicore-dcci-insert-for-scalar=false \
+            -DL2_CACHE_HINT \
+            -I$ASCEND_HOME_PATH/compiler/tikcpp \
+            -I$ASCEND_HOME_PATH/compiler/tikcpp/tikcfw \
+            -I$ASCEND_HOME_PATH/compiler/tikcpp/tikcfw/impl \
+            -I$ASCEND_HOME_PATH/compiler/tikcpp/tikcfw/interface \
+            -I$ASCEND_HOME_PATH/include \
+            -I$ASCEND_HOME_PATH/include/experiment/msprof \
+            -I$TILELANG_PATH/3rdparty/catlass/include \
+            -I./ \
+            -L$ASCEND_HOME_PATH/lib64 -lruntime -lstdc++ -lascendcl -lm -ltiling_api -lplatform -lc_sec -ldl \
+            -fPIC --shared {cpp_name} -o {so_name}
+        """)

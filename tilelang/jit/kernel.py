@@ -95,7 +95,10 @@ class JITKernel(object):
             target = determine_target(target)
 
         # Ensure the target is always a TVM Target object.
-        target = Target(target)
+        if isinstance(target, str) and target == "ascend":
+            self.target = "ascend"
+        else:
+            self.target = Target(target)
 
         # Validate the execution backend.
         assert execution_backend in [
@@ -208,6 +211,27 @@ class JITKernel(object):
                 target_host=target_host,
                 enable_host_codegen=enable_host_codegen,
                 enable_device_compile=enable_device_compile)
+            
+        if str(self.target).lower() == "ascend" and isinstance(artifact, str):
+            # 从PrimFunc提取TensorType作为params
+            prim = tilelang_func
+            from tvm.relay import TensorType
+            params = []
+            for p in prim.params:
+                buf = prim.buffer_map[p]
+                # 构造 TensorType(shape, dtype)
+                params.append(TensorType([int(s) if isinstance(s, tvm.tir.IntImm) else s
+                                        for s in buf.shape], buf.dtype))
+
+            class _AscendArtifact:
+                def __init__(self, kernel_source, params):
+                    self.kernel_source = kernel_source
+                    self.params = params
+                    self.host_mod = None
+                    self.device_mod = None
+                    self.rt_mod = None
+
+            artifact = _AscendArtifact(kernel_source=artifact, params=params)
 
         self.artifact = artifact
 

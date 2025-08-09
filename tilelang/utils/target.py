@@ -14,6 +14,7 @@ AVALIABLE_TARGETS = {
     "webgpu",
     "c",  # represent c source backend
     "llvm",
+    "ascend",
 }
 
 
