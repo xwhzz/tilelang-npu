@@ -113,7 +113,6 @@ void main_kernel( GM_ADDR A_handle,  GM_ADDR B_handle,  GM_ADDR C_handle,  GM_AD
     AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(1);
   }
   if ASCEND_IS_AIV {
-    // cid = cid / 2;
     auto vid = AscendC::GetSubBlockIdx();
     AscendC::CrossCoreWaitFlag(0);
     {
