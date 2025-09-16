@@ -89,13 +89,6 @@ class JITKernel(object):
             pass_configs = {}
         self.pass_configs = pass_configs
 
-        # If the target is specified as a string, validate it and convert it to a TVM Target.
-        if isinstance(target, str):
-            assert target in AVALIABLE_TARGETS, f"Invalid target: {target}"
-            target = determine_target(target)
-
-        # Ensure the target is always a TVM Target object.
-        target = Target(target)
 
         # Validate the execution backend.
         assert execution_backend in [

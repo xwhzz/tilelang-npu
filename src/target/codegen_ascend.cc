@@ -70,7 +70,7 @@ void CodeGenTileLangAscend::PrintFuncPrefix(std::ostream &os) {
 }
 
 std::string CodeGenTileLangAscend::Finish() {
-  decl_stream << "#include \"common.h\"\n";
+  decl_stream << "#include \"tl_templates/ascend/common.h\"\n";
   decl_stream << "#include \"acl/acl.h\"\n";
   decl_stream << "using namespace Catlass;\n";
   decl_stream << "\n";
@@ -559,8 +559,51 @@ void CodeGenTileLangAscend::VisitExpr_(const CallNode *op, std::ostream &os) {
       this->EndScope(func_scope);
       this->PrintIndent();
       this->stream << "}\n";
+    } else if (op_name.find("reduce") != std::string::npos) {
+      this->PrintIndent();
+      auto in_var = op->args[1].as<CallNode>()->args[1].as<VarNode>();
+      auto out_var = op->args[2].as<CallNode>()->args[1].as<VarNode>();
+
+      auto in_offset = PrintExpr(op->args[1].as<CallNode>()->args[2]);
+      auto out_offset = PrintExpr(op->args[2].as<CallNode>()->args[2]);
+
+      auto in_name = var_idmap_[in_var];
+      auto out_name = var_idmap_[out_var];
+
+      auto src_type = op->args[1].as<CallNode>()->args[0].as<CallNode>()->dtype;
+
+      stream << "{\n";
+      int func_scope = this->BeginScope();
+      this->PrintIndent();
+      this->stream << "auto " << in_name << "_ = " << in_name << ".Get<"
+                   << getType(src_type) << ">();\n";
+      this->PrintIndent();
+      this->stream << "auto " << out_name << "_ = " << out_name << ".Get<"
+                   << getType(src_type) << ">();\n";
+
+      this->PrintIndent();
+      this->stream << op_name << "(" << in_name << "_[" << in_offset << "],"
+                   << out_name << "_[" << out_offset << "]);\n";
+      this->EndScope(func_scope);
+      this->PrintIndent();
+      this->stream << "}\n";      
     }
-  } else {
+  } else if (op->op.same_as(tl::add())) {
+
+  } else if (op->op.same_as(tl::sub())) {
+
+  } else if (op->op.same_as(tl::mul())) {
+
+  } else if (op->op.same_as(tl::div())) {
+
+  } else if (op->op.same_as(tl::adds())) {
+
+  } else if (op->op.same_as(tl::muls())) {
+
+  } else if (op->op.same_as(tl::exp())) {
+
+  }
+  else {
     CodeGenC::VisitExpr_(op, os);
   }
 }
@@ -608,7 +651,7 @@ void CodeGenTileLangAscend::VisitStmt_(const AttrStmtNode *op) {
     auto resource_name = resource_id == 0 ? "AIC" : "AIV";
 
     this->PrintIndent();
-    stream << "if (g_coreType == " << resource_name << ") {\n";
+    stream << "if (g_coreType == AscendC::" << resource_name << ") {\n";
     int func_scope = this->BeginScope();
     this->VisitStmt(op->body);
     this->EndScope(func_scope);
