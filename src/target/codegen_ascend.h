@@ -39,6 +39,7 @@ public:
   void VisitExpr_(const FloorDivNode *op, std::ostream &os);
   void VisitExpr_(const FloorModNode *op, std::ostream &os);
   void VisitExpr_(const SelectNode *op, std::ostream &os) final;
+  void VisitExpr_(const BufferLoadNode *op, std::ostream &os) final;
   void VisitStmt_(const AllocateNode *op) final;
   void VisitStmt_(const AttrStmtNode *op) final;
 
@@ -81,6 +82,8 @@ private:
   std::vector<std::string> para_;
 
   std::string block_id_;
+
+  Map<Var, PrimExpr> address_map_;
 };
 
 } // namespace codegen

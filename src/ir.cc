@@ -183,7 +183,7 @@ KernelLaunchFrame KernelLaunch(Array<PrimExpr> grid_size,
                      grid_size[0]));
     n->frames.push_back(
         LaunchThread(CreateEnvThread("vid", "blockIdx.y", grid_size[0].dtype()),
-                     grid_size[0] * 2));
+                     2));
   } else {
     // Launch GPU Kernel
     ICHECK(grid_size.size() <= 3);

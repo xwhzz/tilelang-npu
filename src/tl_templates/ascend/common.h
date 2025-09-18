@@ -21,12 +21,13 @@ using namespace Catlass::Gemm::Block;
 using namespace AscendC;
 
 using ArchTag = Arch::AtlasA2;
-// using LayoutGM = layout::RowMajor;
+using LayoutGM = layout::RowMajor;
 
 using LayoutL0A = layout::zZ;
 using LayoutL0B = layout::nZ;
+using LayoutL1 = layout::zN;
 
-template <typename T, typename LayoutGM, typename LayoutL1, uint32_t srcM, uint32_t srcN,
+template <typename T, uint32_t srcM, uint32_t srcN,
           uint32_t dstM, uint32_t dstN>
 CATLASS_DEVICE void copy_gm_to_l1(LocalTensor<T> dstTensor,
                                   GlobalTensor<T> srcTensor) {
@@ -85,9 +86,9 @@ CATLASS_DEVICE void copy_l1_to_l0b(LocalTensor<T> dstTensor,
   tileCopier(dst, src);
 }
 
-template <typename T1, typename T2, uint32_t M, uint32_t N, uint32_t K,
-          bool init>
+template <typename T1, typename T2, uint32_t M, uint32_t N, uint32_t K>
 CATLASS_DEVICE void mma(LocalTensor<T1> A, LocalTensor<T1> B, LocalTensor<T2> C,
+                        bool init,
                         uint8_t unitFlag = 0) {
   MmadParams mmadParams;
   mmadParams.m = M;
@@ -125,25 +126,6 @@ CATLASS_DEVICE void copy_l0c_to_gm(GlobalTensor<T2> dstTensor,
   tileCopier(dst, src, unitFlag);
 }
 
-
-template <typename T, uint32_t M, uint32_t N>
-CATLASS_DEVICE void copy_l0c_to_ub(LocalTensor<T> dstTensor, LocalTensor<T> srcTensor) {
-  AscendC::FixpipeParamsM300 intriParams;
-
-  intriParams.nSize = N;
-  intriParams.mSize = M;
-
-  intriParams.srcStride = M;
-  intriParams.dstStride = N;
-
-  intriParams.quantPre = QuantMode_t::NoQuant;
-  intriParams.reluEn = false;
-  intriParams.unitFlag = 0;
-
-  AscendC::Fixpipe<T, T, AscendC::CFG_ROW_MAJOR>(
-      dstTensor, srcTensor, intriParams);
-}
-
 template <uint32_t M, uint32_t N, uint32_t K, uint32_t block_M,
           uint32_t block_N, uint32_t SwizzleOffset = 1,
           uint32_t SwizzleDirection = 0>
@@ -163,11 +145,10 @@ CATLASS_DEVICE auto thread_block_swizzle(uint64_t pid) {
   return coord.m() * cols + coord.n();
 }
 
-template <typename T, uint32_t srcM, uint32_t srcN, uint32_t dstM,
-          uint32_t dstN>
+template <typename T, uint32_t srcN, uint32_t dstN, uint32_t dstM = 1>
 CATLASS_DEVICE void copy_gm_to_ub(LocalTensor<T> dstTensor,
                                   GlobalTensor<T> srcTensor) {
-    AscendC::DataCopyExtParams dataCopyParams(
+  AscendC::DataCopyExtParams dataCopyParams(
       dstM,
       dstN * sizeof(T),
       (srcN - dstN) * sizeof(T),
@@ -178,22 +159,55 @@ CATLASS_DEVICE void copy_gm_to_ub(LocalTensor<T> dstTensor,
   AscendC::DataCopyPad(dstTensor, srcTensor, dataCopyParams, padParams);
 }
 
-template <typename T, uint32_t srcM, uint32_t srcN, uint32_t dstM,
-          uint32_t dstN>
+template <typename T, uint32_t dstN, uint32_t srcN, uint32_t srcM = 1>
 CATLASS_DEVICE void copy_ub_to_gm(GlobalTensor<T> dstTensor,
                                   LocalTensor<T> srcTensor) {
-  using LayoutGM = layout::RowMajor;
-  auto layout = MakeLayoutFromTag(LayoutGM{dstM, dstN});
-  auto dst_LAYOUT = MakeLayoutTile(layout, tla::MakeShape(srcM, srcN));
-  auto dst = tla::MakeTensor<decltype(dstTensor), decltype(dst_LAYOUT),
-                             AscendC::TPosition::GM>(dstTensor, dst_LAYOUT);
+  AscendC::DataCopyExtParams dataCopyParams(
+    srcM,
+    srcN * sizeof(T),
+    0,
+    (dstN - srcN) * sizeof(T),
+    0
+  );
+  AscendC::DataCopyPad(dstTensor, srcTensor, dataCopyParams);
+}
 
-  auto src_LAYOUT = MakeLayoutFromTag(LayoutGM{srcM, srcN});
-  auto src = tla::MakeTensor<decltype(srcTensor), decltype(src_LAYOUT),
-                             AscendC::TPosition::VECCALC>(srcTensor, src_LAYOUT);
+template <typename T1, typename T2, uint32_t len>
+CATLASS_DEVICE void copy_ub_to_ub(LocalTensor<T1> dstTensor,
+                                  LocalTensor<T2> srcTensor) {
+  if constexpr (std::is_same_v<T1, T2>) {
+    AscendC::DataCopy(dstTensor, srcTensor, len);
+  } else {
+    AscendC::Cast(dstTensor, srcTensor, AscendC::RoundMode::CAST_RINT, len);
+  }
+}
 
-  TileCopyTla<ArchTag, decltype(src), decltype(dst)> tileCopier; 
-  tileCopier(dst, src);
+template <typename T, uint32_t M, uint32_t N>
+CATLASS_DEVICE void copy_ub_to_l1(LocalTensor<T> dstTensor,
+                                  LocalTensor<T> srcTensor) {
+  static_assert(std::is_same_v<T, half>, "only support half");
+  static_assert(M % 16 == 0, "M must be the multiple of 16");
+  
+  AscendC::DataCopyExtParams dataCopyParams(
+    M,
+    N * sizeof(T),
+    0,
+    0,
+    0
+  );
+
+
+  AscendC::Nd2NzParams nd2nzParams;
+  nd2nzParams.ndNum = 1;
+  nd2nzParams.nValue = M;
+  nd2nzParams.dValue = N;
+  nd2nzParams.srcNdMatrixStride = 0;
+  nd2nzParams.srcDValue = N;
+  nd2nzParams.dstNzC0Stride = M;
+  nd2nzParams.dstNzNStride = 1;
+  nd2nzParams.dstNzMatrixStride = 0;
+
+  AscendC::DataCopyPad(dstTensor, srcTensor, dataCopyParams, nd2nzParams);
 }
 
 template <typename T, uint32_t Len>
@@ -244,8 +258,8 @@ CATLASS_DEVICE void fill(LocalTensor<T> const &ubOut,
 
 template <typename T, uint32_t M, uint32_t N, class pattern>
 CATLASS_DEVICE void reduce_sum(
-  LocalTensor<T> const &srcTensor,
   LocalTensor<T> const &dstTensor,
+  LocalTensor<T> const &srcTensor,
   LocalTensor<uint8_t> const &sharedTmpBuffer
 ) {
   uint32_t shape[] = {M, N};
@@ -254,68 +268,42 @@ CATLASS_DEVICE void reduce_sum(
 
 template <typename T, uint32_t M, uint32_t N, class pattern>
 CATLASS_DEVICE void reduce_max(
-  LocalTensor<T> const &srcTensor,
   LocalTensor<T> const &dstTensor,
+  LocalTensor<T> const &srcTensor,
   LocalTensor<uint8_t> const &sharedTmpBuffer
 ) {
   uint32_t shape[] = {M, N};
   AscendC::ReduceMax<T, pattern>(dstTensor, srcTensor, sharedTmpBuffer, shape, true);
 }
 
-template <typename T1, typename T2, uint32_t M, uint32_t N, uint32_t K,
-          bool init, bool is_transpose_A = false, bool is_transpose_B = false>
-CATLASS_DEVICE void gemm(LocalTensor<T1> const &A, LocalTensor<T1> const &B, LocalTensor<T2> const &C) {
-  using A_TYPE = MatmulType<TPosition::A1, CubeFormat::NZ, T1, is_transpose_A>;
-  using B_TYPE = MatmulType<TPosition::B1, CubeFormat::NZ, T1, is_transpose_B>;
-  using C_TYPE = MatmulType<TPosition::CO1, CubeFormat::NZ, T2>;
-  AscendC::Matmul<A_TYPE, B_TYPE, C_TYPE> mm; 
-  mm.SetTensorA(A, is_transpose_A);
-  mm.SetTensorB(B, is_transpose_B);
-  mm.SetSingleShape(M, N, K);
-  mm.Iterate(init, C);
-  mm.End();
-}
 
-template <typename T1, typename T2, uint32_t M, uint32_t N, uint32_t K,
-          bool init, bool is_transpose_A = false, bool is_transpose_B = false>
-CATLASS_DEVICE void gemm_ub(LocalTensor<T1> const &A, LocalTensor<T1> const &B, LocalTensor<T2> const &C) {
-  using A_TYPE = MatmulType<TPosition::A1, CubeFormat::NZ, T1, is_transpose_A>;
-  using B_TYPE = MatmulType<TPosition::B1, CubeFormat::NZ, T1, is_transpose_B>;
-  using C_TYPE = MatmulType<TPosition::VECIN, CubeFormat::ND, T2>;
-  AscendC::Matmul<A_TYPE, B_TYPE, C_TYPE> mm; 
-  mm.SetTensorA(A, is_transpose_A);
-  mm.SetTensorB(B, is_transpose_B);
-  mm.SetSingleShape(M, N, K);
-  mm.Iterate(init, C);
-  mm.End();
-}
-
-template <typename T1, typename T2, uint32_t M, uint32_t N, uint32_t K,
-          bool init, bool is_transpose_A = false, bool is_transpose_B = false>
-CATLASS_DEVICE void gemm_llg(LocalTensor<T1> const &A, LocalTensor<T1> const &B, GlobalTensor<T2> const &C) {
-  using A_TYPE = MatmulType<TPosition::A1, CubeFormat::NZ, T1, is_transpose_A>;
-  using B_TYPE = MatmulType<TPosition::B1, CubeFormat::NZ, T1, is_transpose_B>;
-  using C_TYPE = MatmulType<TPosition::GM, CubeFormat::ND, T2>;
-  using Bias_TYPE = MatmulType<TPosition::GM, CubeFormat::ND, T2>;
-
-  if constexpr (!init) {
-    AscendC::MatmulImpl<A_TYPE, B_TYPE, C_TYPE, Bias_TYPE> mm; 
-    mm.SetTensorA(A, is_transpose_A);
-    mm.SetTensorB(B, is_transpose_B);
-    mm.SetBias(C);
-    mm.SetSingleShape(M, N, K);
-    mm.Iterate();
-    mm.GetTensorC(C); 
-    // mm.End();
+template <typename T1, typename T2, uint32_t M, uint32_t N, uint32_t K, bool transpose_A=false, bool transpose_B=false>
+CATLASS_DEVICE void gemm_v0(
+  LocalTensor<T1> const &A,
+  LocalTensor<T1> const &B,
+  LocalTensor<T2> const &C, // this must be located in l0c
+  AscendC::TBuf<AscendC::TPosition::A2> &l0a_,
+  AscendC::TBuf<AscendC::TPosition::B2> &l0b_,
+  bool clear
+) {
+  auto l0a = l0a_.Get<T1>();
+  auto l0b = l0b_.Get<T1>();
+  AscendC::PipeBarrier<PIPE_ALL>();
+  if constexpr (!transpose_A) {
+    tl::ascend::copy_l1_to_l0a<half, layout::zN, M, K, M, K>(l0a, A);
+  } else {
+    tl::ascend::copy_l1_to_l0a<half, layout::nZ, M, K, M, K>(l0a, A);
   }
-  else {
-    AscendC::MatmulImpl<A_TYPE, B_TYPE, C_TYPE> mm; 
-    mm.SetTensorA(A, is_transpose_A);
-    mm.SetTensorB(B, is_transpose_B);
-    mm.SetSingleShape(M, N, K);
-    mm.Iterate();
-    mm.GetTensorC(C); 
+  if constexpr (!transpose_B) {
+    tl::ascend::copy_l1_to_l0b<half, layout::zN, K, N, K, N>(l0b, B);
+  } else {
+    tl::ascend::copy_l1_to_l0b<half, layout::nZ, K, N, K, N>(l0b, B);
   }
+
+  AscendC::PipeBarrier<PIPE_ALL>();
+
+  tl::ascend::mma<T1, T2, M, N, K>(l0a, l0b, C, clear);
+  AscendC::PipeBarrier<PIPE_ALL>();
 }
 
 } // namespace tl::ascend

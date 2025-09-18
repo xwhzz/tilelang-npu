@@ -259,6 +259,22 @@ TVM_DLL const Op &tvm_rdna_wmma();
  */
 TVM_DLL const Op &tvm_rdna_wmma_store();
 
+const Op &add();
+
+const Op &sub();
+
+const Op &mul();
+
+const Op &div();
+
+const Op &adds();
+
+const Op &muls();
+
+const Op &exp();
+
+
+
 } // namespace tl
 } // namespace tvm
 

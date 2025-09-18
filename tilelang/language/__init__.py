@@ -48,7 +48,7 @@ from .allocate import (
 )
 from .copy import copy, c2d_im2col, npu_copy_v2 as copy  # noqa: F401, F811
 from .gemm import GemmWarpPolicy, gemm  # noqa: F401
-from .fill import fill, clear  # noqa: F401
+# from .fill import fill, clear  # noqa: F401
 from .reduce import (
     reduce,  # noqa: F401
     reduce_max,  # noqa: F401
@@ -69,12 +69,16 @@ from .customize import (
     view,  # noqa: F401
     npu_gemm as gemm,  # noqa: F401, F811
     # npu_copy as copy,  # noqa: F401, F811
-    npu_add as tile_add,  # noqa: F401, F811
+    # npu_add as tile_add,  # noqa: F401, F811
+    reduce_sum,
+    npu_max as max
 )
 from .logical import any_of, all_of  # noqa: F401
 from .builtin import *  # noqa: F401
 
 from .memscope import *  # noqa: F401
+
+from .ascend import *
 
 
 def symbolic(name: str, dtype: str = "int32"):
@@ -208,3 +212,8 @@ del use_swizzle
 def use_swizzle(m, n, k, block_m, block_n, off=1, dir=0):
     """Alias for npu_use_swizzle with proper signature for function hints."""
     return npu_use_swizzle(m, n, k, block_m, block_n, off, dir)
+
+
+def annotate_address(address_map: Dict):
+    address_map = {buffer.data: address for buffer, address in address_map.items()}
+    return block_attr({"address_map": address_map})

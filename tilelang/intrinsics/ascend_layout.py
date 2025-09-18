@@ -59,7 +59,7 @@ def make_zn_layout(buf):
                       ceil_div(shape[-2], C0_NUM_PER_FRACTAL)],
                      [ELE_NUM_PER_C0, ceil_div(shape[-1], ELE_NUM_PER_C0)]]
         new_stride = [[ELE_NUM_PER_C0, ELE_NUM_PER_FRACTAL],
-                      [1, round_up(shape[-2], C0_NUM_PER_FRACTAL) * ELE_NUM_PER_C0]]
+                      [1, round_up(shape[-2], C0_NUM_PER_FRACTAL) * ELE_NUM_PER_C0]] # srcM 
         rowInFractal = new_shape[0][0]
         colInFractal = new_shape[1][0]
         strideRowsByFractal = new_stride[0][1]

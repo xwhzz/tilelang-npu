@@ -42,6 +42,8 @@ Stmt AscendCopy::Lower(const LowerArgs &T, arith::Analyzer *analyzer) const {
       return "half";
     } else if (dtype.is_float() && dtype.bits() == 32) {
       return "float";
+    } else if (dtype.is_int()) {
+      return "int";
     }
     LOG(FATAL) << "Unsupported data type: " << dtype;
     return "";
@@ -53,10 +55,9 @@ Stmt AscendCopy::Lower(const LowerArgs &T, arith::Analyzer *analyzer) const {
   bool print_dst_layout = false;
   bool print_src_layout = false;
   bool print_gm_layout = false;
+  bool print_ub = false;
   if (src.scope() == "global" && dst.scope() == "shared.dyn") {
     ss << "copy_gm_to_l1";
-    print_dst_layout = true;
-    print_gm_layout = true;
   } else if (src.scope() == "shared.dyn" && dst.scope() == "wmma.matrix_a") {
     ss << "copy_l1_to_l0a";
     print_src_layout = true;
@@ -67,40 +68,68 @@ Stmt AscendCopy::Lower(const LowerArgs &T, arith::Analyzer *analyzer) const {
     ss << "copy_l0c_to_gm";
     flag = true;
     print_gm_layout = true;
-  } else if (src.scope() == "global" && dst.scope() == "shared") {
-    ss << "copy_gm_to_ub";
-  } else if (src.scope() == "shared" && dst.scope() == "global") {
-    ss << "copy_ub_to_gm";
+  } else if (src.scope() == "shared" || dst.scope() == "shared") {
+    if (src.scope() == "global") {
+      ss << "copy_gm_to_ub<";
+      ss << get_dtype(src) << ", ";
+      ss << src->shape[src->shape.size() - 1] << ", ";
+      ss << dst->shape[dst->shape.size() - 1];
+      if (dst->shape.size() > 1) {
+        ss << ", " << dst->shape[dst->shape.size() - 2];
+      }
+      ss << ">";
+    } else if (dst.scope() == "global") {
+      ss << "copy_ub_to_gm<";
+      ss << get_dtype(dst) << ", ";
+      ss << dst->shape[dst->shape.size() - 1] << ", ";
+      ss << src->shape[src->shape.size() - 1];
+      if (src->shape.size() > 1) {
+        ss << ", " << src->shape[src->shape.size() - 2];
+      }
+      ss << ">";
+    } else {
+      ss << "copy_ub_to_ub<";
+      ss << get_dtype(dst) << ", ";
+      ss << get_dtype(src) << ", ";
+      PrimExpr len = 1;
+      for (auto &shape : src->shape) {
+        len *= shape;
+      }
+      ss << len;
+      ss << ">";
+    }
+
+    print_ub = true;
   } else {
     LOG(FATAL) << "Unsupported scope: src = " << src.scope()
                << ", dst = " << dst.scope();
   }
+  if (!print_ub) {
+    ss << "<" << get_dtype(src) << ", ";
 
-  ss << "<" << get_dtype(src) << ", ";
+    if (flag) {
+      ss << get_dtype(dst) << ", ";
+    }
+    if (print_gm_layout) {
+      if (T.layout_map.count(src))
+        ss << T.layout_map[src]->AscendLayoutStr() << ", ";
+      else
+        ss << "layout::RowMajor, ";
+    }
 
-  if (flag) {
-    ss << get_dtype(dst) << ", ";
-  }
-  if (print_gm_layout) {
-    if (T.layout_map.count(src))
-      ss << T.layout_map[src]->AscendLayoutStr() << ", ";
-    else
-      ss << "layout::RowMajor, ";
-  }
-
-  if (print_src_layout) {
+    if (print_src_layout) {
     ICHECK(T.layout_map.count(src))
         << "Layout map does not contain source buffer: " << src->name;
     ss << T.layout_map[src]->AscendLayoutStr() << ", ";
-  } else if (print_dst_layout) {
+    } else if (print_dst_layout) {
     ICHECK(T.layout_map.count(dst))
         << "Layout map does not contain destination buffer: " << dst->name;
     ss << T.layout_map[dst]->AscendLayoutStr() << ", ";
+    }
+    int src_ndim = src->shape.size(), dst_ndim = dst->shape.size();
+    ss << src->shape[src_ndim - 2] << ", " << src->shape[src_ndim - 1] << ", "
+       << dst->shape[dst_ndim - 2] << ", " << dst->shape[dst_ndim - 1] << ">";
   }
-  int src_ndim = src->shape.size(), dst_ndim = dst->shape.size();
-  ss << src->shape[src_ndim - 2] << ", " << src->shape[src_ndim - 1] << ", "
-     << dst->shape[dst_ndim - 2] << ", " << dst->shape[dst_ndim - 1] << ">";
-
   Array<PrimExpr> src_indices, dst_indices;
 
   for (size_t i = 0; i < src_range.size(); i++) {
