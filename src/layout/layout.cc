@@ -48,15 +48,19 @@ Map<Var, Range> FragmentNode::getVarMap() const {
 }
 
 LayoutNode::LayoutNode(Array<PrimExpr> input_size,
-                       Array<PrimExpr> forward_index) {
+                       Array<PrimExpr> forward_index, PrimExpr ascend_layout) {
   input_size_ = input_size;
   arith::Analyzer analyzer;
   UpdateAnalyzer(&analyzer);
   forward_index_ = forward_index.Map(
       [&](const PrimExpr &e) { return analyzer.Simplify(e); });
+  ascend_layout_ =
+      static_cast<AscendLayout>(Downcast<IntImm>(ascend_layout)->value);
+  ascend_layout_str_ = ascendLayoutMap.at(ascend_layout_);
 }
 
-Layout::Layout(Array<IterVar> forward_var, Array<PrimExpr> forward_index) {
+Layout::Layout(Array<IterVar> forward_var, Array<PrimExpr> forward_index,
+               PrimExpr ascend_layout) {
   Map<Var, PrimExpr> vmap;
   Array<PrimExpr> input_size;
   for (size_t i = 0; i < forward_var.size(); i++) {
@@ -67,12 +71,13 @@ Layout::Layout(Array<IterVar> forward_var, Array<PrimExpr> forward_index) {
   forward_index =
       forward_index.Map([&](const PrimExpr &e) { return Substitute(e, vmap); });
 
-  auto n = make_object<LayoutNode>(input_size, forward_index);
+  auto n = make_object<LayoutNode>(input_size, forward_index, ascend_layout);
   data_ = std::move(n);
 }
 
-Layout::Layout(Array<PrimExpr> input_size, Array<PrimExpr> forward_index) {
-  auto n = make_object<LayoutNode>(input_size, forward_index);
+Layout::Layout(Array<PrimExpr> input_size, Array<PrimExpr> forward_index,
+               PrimExpr ascend_layout) {
+  auto n = make_object<LayoutNode>(input_size, forward_index, ascend_layout);
   data_ = std::move(n);
 }
 
@@ -439,7 +444,8 @@ TVM_REGISTER_NODE_TYPE(LayoutNode);
 TVM_REGISTER_NODE_TYPE(FragmentNode);
 
 TVM_REGISTER_GLOBAL("tl.Layout").set_body([](TVMArgs args, TVMRetValue *ret) {
-  *ret = Layout(Array<IterVar>(args[0]), Array<PrimExpr>(args[1]));
+  *ret = Layout(Array<IterVar>(args[0]), Array<PrimExpr>(args[1]),
+                PrimExpr(args[2]));
 });
 
 TVM_REGISTER_GLOBAL("tl.Layout_input_shape").set_body_typed([](Layout layout) {

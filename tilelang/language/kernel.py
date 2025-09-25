@@ -94,10 +94,12 @@ class KernelLaunchFrame(TIRFrame):
                           BlockFrame), f"Last frame must be a block frame, got {last_block_frame}"
 
         maybe_cpu = last_block_frame.annotations.get("tilelang.is_cpu_kernel_frame", False)
-
+        maybe_npu = last_block_frame.annotations.get("tilelang.is_npu_kernel_frame", False)
         if maybe_cpu:
             # CPU kernel frame, return a list of for frame items.
             return [frame.vars[0] for frame in self.frames[0:-1]]
+        elif maybe_npu:
+            return [self.frames[i].iter_var.var for i in range(2)]
         else:
             # Otherwise, return a list of iter_var.var objects (excluding the last 4 frames).
             # As 4 frames for threadIdx.x, threadIdx.y, threadIdx.z and block frame with attributes
@@ -213,6 +215,8 @@ def Kernel(
     threads: Optional[Union[int, List[int], Tuple]] = None,
     is_cpu: bool = False,
     prelude: Optional[str] = None,
+    is_npu: bool = False,
+    pipeline: bool = False,
 ):
     """Tools to quickly construct a GPU kernel launch frame.
 
@@ -238,6 +242,10 @@ def Kernel(
         The result LaunchThreadFrame.
     """
     attrs: dict = {}
+    if is_npu:
+        assert len(blocks) == 1, "NPU kernel must have exactly one block dimension"
+        attrs["tilelang.is_npu_kernel_frame"] = True
+        return _ffi_api.KernelLaunch(blocks, threads, attrs)
 
     if not is_cpu and threads is None:
         threads = 128  # default thread number

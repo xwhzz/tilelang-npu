@@ -12,7 +12,7 @@ from tvm.ir import CallingConv
 from tvm.target import Target
 from tilelang.contrib import hipcc, nvcc
 from tilelang.engine.param import KernelParam, CompiledArtifact
-from tilelang.utils.target import determine_target
+from tilelang.utils.target import determine_target  # noqa: F401
 from tilelang.engine.phase import (
     LowerAndLegalize,
     OptimizeForTarget,
@@ -156,16 +156,9 @@ def host_codegen(host_mod: tvm.IRModule, target_host: Target) -> tvm.IRModule:
 
 
 def device_codegen(device_mod: tvm.IRModule, target: Target) -> tvm.IRModule:
-    device_mod = tilelang.transform.LowerDeviceStorageAccessInfo()(device_mod)
-    device_mod = tir.transform.LowerIntrin()(device_mod)
     device_mod = tir.transform.Simplify()(device_mod)
 
-    if target.kind.name == "cuda":
-        device_mod = tvm._ffi.get_global_func("target.build.tilelang_cuda")(device_mod, target)
-    elif target.kind.name == "hip":
-        device_mod = tvm._ffi.get_global_func("target.build.tilelang_hip")(device_mod, target)
-    else:
-        raise ValueError(f"Target {target.kind.name} is not supported")
+    device_mod = tvm._ffi.get_global_func("target.build.tilelang_ascend")(device_mod, target)
 
     return device_mod
 
@@ -214,16 +207,10 @@ def lower(
         params = extrac_params(func) if not runtime_only else None
         mod = tvm.IRModule({func.attrs["global_symbol"]: func})
 
-    if isinstance(target, str):
-        target = determine_target(target)
-
-    target_host = canon_target_host(target, target_host)
+    target_host = canon_target_host(None, target_host)
 
     target_host = tvm.target.Target.canon_target(target_host)
-    target = tvm.target.Target(target, target_host)
-
-    _is_host_call = get_host_call(is_device_c=is_cpu_device_backend(target))
-    _is_device_call = get_device_call(is_device_c=is_cpu_device_backend(target))
+    target = tvm.target.Target(target_host, target_host)
 
     # Phase 1: Lower and legalize the IR
     mod = LowerAndLegalize(mod, target)
@@ -231,17 +218,6 @@ def lower(
     # Phase 2: Optimize the IR for the target
     mod = OptimizeForTarget(mod, target)
 
-    host_mod = tir.transform.Filter(_is_host_call)(mod)
-    device_mod = tir.transform.Filter(_is_device_call)(mod)
+    codegen_mod = device_codegen(mod, target)
 
-    codegen_mod = device_codegen(
-        device_mod, target) if enable_device_compile else device_codegen_without_compile(
-            device_mod, target)
-
-    if enable_host_codegen:
-        host_mod = host_codegen(host_mod, target_host)
-        host_mod.import_module(codegen_mod)
-        return CompiledArtifact(
-            host_mod, device_mod, params, codegen_mod.get_source(), rt_mod=host_mod)
-
-    return CompiledArtifact(host_mod, device_mod, params, codegen_mod.get_source())
+    return CompiledArtifact(None, None, params, codegen_mod.get_source())

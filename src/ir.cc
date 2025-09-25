@@ -158,6 +158,8 @@ KernelLaunchFrame KernelLaunch(Array<PrimExpr> grid_size,
   // If the kernel is a CPU kernel, we don't need to launch any threads.
   bool is_cpu_kernel_frame =
       attrs.defined() && attrs.count(tilelang_is_cpu_kernel_frame);
+  bool is_npu_kernel_frame =
+      attrs.defined() && attrs.count(tilelang_is_npu_kernel_frame);
 
   if (is_cpu_kernel_frame) {
     // Launch CPU Kernel
@@ -169,6 +171,19 @@ KernelLaunchFrame KernelLaunch(Array<PrimExpr> grid_size,
       n->frames.push_back(
           MakeIterVarFrame("block_var_" + std::to_string(i), grid_size[i]));
     }
+    // Launch CPU Kernel
+  } else if (is_npu_kernel_frame) { // Launch NPU Kernel
+    ICHECK(grid_size.size() == 1) << "NPU kernel only supports 1D grid size";
+
+    // Note: corresponding relationship ->
+    // blockIdx.x => cube idx in ascend
+    // blockIdx.y => vec idx in ascend
+    n->frames.push_back(
+        LaunchThread(CreateEnvThread("cid", "blockIdx.x", grid_size[0].dtype()),
+                     grid_size[0]));
+    n->frames.push_back(
+        LaunchThread(CreateEnvThread("vid", "blockIdx.y", grid_size[0].dtype()),
+                     2));
   } else {
     // Launch GPU Kernel
     ICHECK(grid_size.size() <= 3);
@@ -297,6 +312,96 @@ WarpSpecializeFrame WarpSpecialize(Array<IntImm> warp_group_ids,
 
 TVM_REGISTER_NODE_TYPE(WarpSpecializeFrameNode);
 TVM_REGISTER_GLOBAL("tl.WarpSpecialize").set_body_typed(WarpSpecialize);
+
+class ResourceSpecializeFrameNode : public TIRFrameNode {
+public:
+  Array<TIRFrame> frames;
+
+  void VisitAttrs(tvm::AttrVisitor *v) {
+    TIRFrameNode::VisitAttrs(v);
+    v->Visit("frames", &frames);
+  }
+
+  static constexpr const char *_type_key = "tl.ResourceSpecializeFrame";
+  TVM_DECLARE_FINAL_OBJECT_INFO(ResourceSpecializeFrameNode, TIRFrameNode);
+
+public:
+  TVM_DLL void EnterWithScope() final {
+    for (auto frame = frames.begin(); frame != frames.end(); ++frame)
+      (*frame)->EnterWithScope();
+  }
+  /*!
+   * \brief The method called when exiting RAII scope.
+   * \sa tvm::support::With
+   */
+  TVM_DLL void ExitWithScope() final {
+    for (auto frame = frames.rbegin(); frame != frames.rend(); ++frame)
+      (*frame)->ExitWithScope();
+  }
+};
+
+class ResourceSpecializeFrame : public TIRFrame {
+public:
+  TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(
+      ResourceSpecializeFrame, TIRFrame, ResourceSpecializeFrameNode);
+};
+
+ResourceSpecializeFrame ResourceSpecialize(String resource_name) {
+  ObjectPtr<ResourceSpecializeFrameNode> n =
+      make_object<ResourceSpecializeFrameNode>();
+  AttrFrame attr_frame = Attr(Integer(0), resource_name, Integer(1));
+  n->frames.push_back(attr_frame);
+  return ResourceSpecializeFrame(n);
+}
+
+TVM_REGISTER_NODE_TYPE(ResourceSpecializeFrameNode);
+TVM_REGISTER_GLOBAL("tl.ResourceSpecialize").set_body_typed(ResourceSpecialize);
+
+class ScopeFrameNode : public TIRFrameNode {
+public:
+  Array<TIRFrame> frames;
+
+  void VisitAttrs(tvm::AttrVisitor *v) {
+    TIRFrameNode::VisitAttrs(v);
+    v->Visit("frames", &frames);
+  }
+
+  static constexpr const char *_type_key = "tl.ScopeFrame";
+  TVM_DECLARE_FINAL_OBJECT_INFO(ScopeFrameNode, TIRFrameNode);
+
+public:
+  TVM_DLL void EnterWithScope() final {
+    for (auto frame = frames.begin(); frame != frames.end(); ++frame)
+      (*frame)->EnterWithScope();
+  }
+  /*!
+   * \brief The method called when exiting RAII scope.
+   * \sa tvm::support::With
+   */
+  TVM_DLL void ExitWithScope() final {
+    for (auto frame = frames.rbegin(); frame != frames.rend(); ++frame)
+      (*frame)->ExitWithScope();
+  }
+};
+
+class ScopeFrame : public TIRFrame {
+public:
+  TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(ScopeFrame, TIRFrame,
+                                                    ScopeFrameNode);
+};
+
+ScopeFrame Scope(String scope_name) {
+  ObjectPtr<ScopeFrameNode> n = make_object<ScopeFrameNode>();
+  int scope_id = 0;
+  if (scope_name == "V")
+    scope_id = 1;
+  AttrFrame attr_frame = Attr(Integer(0), "resource_scope", Integer(scope_id));
+  n->frames.push_back(attr_frame);
+  return ScopeFrame(n);
+}
+
+TVM_REGISTER_NODE_TYPE(ScopeFrameNode);
+TVM_REGISTER_GLOBAL("tl.Scope").set_body_typed(Scope);
 
 } // namespace tl
 } // namespace tvm

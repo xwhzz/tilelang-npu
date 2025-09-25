@@ -76,3 +76,34 @@ def alloc_var(dtype, scope="local.var"):
         T.Buffer: A TVM buffer object allocated as a single-element variable
     """
     return T.alloc_buffer([1], dtype, scope=scope)
+
+
+"""
+The following are memory scopes in Ascend.
+Here is the correspondence between TIR scopes and Ascend memory scopes:
+- shared.dyn -> L1
+- wmma.matrix_a -> L0A
+- wmma.matrix_b -> L0B
+- wmma.accumulator -> L0C
+- shared -> UB
+"""
+
+
+def alloc_L1(shape, dtype):
+    return T.alloc_buffer(shape, dtype, scope="shared.dyn")
+
+
+def alloc_L0A(shape, dtype):
+    return T.alloc_buffer(shape, dtype, scope="wmma.matrix_a")
+
+
+def alloc_L0B(shape, dtype):
+    return T.alloc_buffer(shape, dtype, scope="wmma.matrix_b")
+
+
+def alloc_L0C(shape, dtype):
+    return T.alloc_buffer(shape, dtype, scope="wmma.accumulator")
+
+
+def alloc_ub(shape, dtype):
+    return T.alloc_buffer(shape, dtype, scope="shared")

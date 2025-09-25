@@ -14,7 +14,7 @@ from typing import List
 @tvm._ffi.register_object("tl.Layout")
 class Layout(Node):
 
-    def __init__(self, shape, forward_fn):
+    def __init__(self, shape, forward_fn, layout_tag=0):
         """
         Initialize a Layout object.
 
@@ -44,7 +44,8 @@ class Layout(Node):
             forward_index = [forward_index]
 
         # Call the FFI constructor to create the Layout object in C++ backend
-        self.__init_handle_by_constructor__(_ffi_api.Layout, forward_vars, forward_index)
+        self.__init_handle_by_constructor__(_ffi_api.Layout, forward_vars, forward_index,
+                                            layout_tag)
 
     @property
     def index(self):

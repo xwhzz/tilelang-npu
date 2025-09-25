@@ -124,6 +124,14 @@ if(USE_CUDA)
   list(APPEND TILE_LANG_SRCS ${TILE_LANG_CUDA_SRCS})
 endif()
 
+if(USE_ASCEND)
+  tilelang_file_glob(GLOB TILE_LANG_ASCEND_SRCS
+    src/target/codegen_ascend.cc
+    src/target/rt_mod_ascend.cc
+  )
+  list(APPEND TILE_LANG_SRCS ${TILE_LANG_ASCEND_SRCS})
+endif()
+
 # Include ROCm source files if ROCm is enabled
 if(USE_ROCM)
   tilelang_file_glob(GLOB TILE_LANG_HIP_SRCS

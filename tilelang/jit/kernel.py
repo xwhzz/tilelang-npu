@@ -89,13 +89,6 @@ class JITKernel(object):
             pass_configs = {}
         self.pass_configs = pass_configs
 
-        # If the target is specified as a string, validate it and convert it to a TVM Target.
-        if isinstance(target, str):
-            assert target in AVALIABLE_TARGETS, f"Invalid target: {target}"
-            target = determine_target(target)
-
-        # Ensure the target is always a TVM Target object.
-        target = Target(target)
 
         # Validate the execution backend.
         assert execution_backend in [
@@ -158,7 +151,22 @@ class JITKernel(object):
         instance.torch_function = instance.adapter.func
         return instance
 
+    def _generate_extra_args(self, *args):
+        modify_args = ()
+        import torch
+        import torch_npu
+        import ctypes
+        # process input tensor
+        for item in args:
+            modify_args += (item,)
+
+        for k, v in self.adapter.dynamic_symbolic_map.items():
+            modify_args = modify_args + (args[v[0]].shape[v[1]],)
+
+        return modify_args
+
     def __call__(self, *args: Any, **kwds: Any) -> Any:
+        modify_args = self._generate_extra_args(*args)
         """
         Invokes the compiled function with the given arguments.
 
@@ -174,7 +182,7 @@ class JITKernel(object):
         Any
             The result of the function execution.
         """
-        return self.torch_function(*args, **kwds)
+        return self.torch_function(*modify_args, **kwds)
 
     def _compile_and_create_adapter(self, tilelang_func: PrimFunc,
                                     out_idx: List[int]) -> BaseKernelAdapter:

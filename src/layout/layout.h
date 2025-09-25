@@ -19,10 +19,26 @@ using namespace tir;
 class Layout;
 class Fragment;
 
+enum class AscendLayout {
+  kRowMajor = 0,
+  kColMajor = 1,
+  kzN = 2,
+  kzZ = 3,
+  knZ = 4,
+};
+
+static const std::unordered_map<AscendLayout, std::string> ascendLayoutMap = {
+    {AscendLayout::kRowMajor, "layout::RowMajor"},
+    {AscendLayout::kColMajor, "layout::ColumnMajor"},
+    {AscendLayout::kzN, "layout::zN"},
+    {AscendLayout::kzZ, "layout::zZ"},
+    {AscendLayout::knZ, "layout::nZ"}};
+
 class LayoutNode : public Object {
 public:
   LayoutNode() = default;
-  LayoutNode(Array<PrimExpr> input_size, Array<PrimExpr> forward_index);
+  LayoutNode(Array<PrimExpr> input_size, Array<PrimExpr> forward_index,
+             PrimExpr ascend_layout = 0);
 
   size_t InputDim() const { return input_size_.size(); }
 
@@ -33,6 +49,8 @@ public:
   Array<PrimExpr> OutputShape() const;
 
   Array<PrimExpr> GetForwardIndex() const { return forward_index_; }
+
+  std::string AscendLayoutStr() const { return ascend_layout_str_; }
 
   virtual Array<PrimExpr> GetForwardVars() const;
 
@@ -55,6 +73,8 @@ protected:
   void UpdateAnalyzer(arith::Analyzer *analyzer) const;
   Array<PrimExpr> forward_index_;
   Array<PrimExpr> input_size_;
+  AscendLayout ascend_layout_;
+  std::string ascend_layout_str_;
 };
 
 /*!
@@ -62,8 +82,10 @@ protected:
  */
 class Layout : public ObjectRef {
 public:
-  TVM_DLL Layout(Array<IterVar> forward_var, Array<PrimExpr> forward_index);
-  TVM_DLL Layout(Array<PrimExpr> input_size, Array<PrimExpr> forward_index);
+  TVM_DLL Layout(Array<IterVar> forward_var, Array<PrimExpr> forward_index,
+                 PrimExpr ascend_layout = 0);
+  TVM_DLL Layout(Array<PrimExpr> input_size, Array<PrimExpr> forward_index,
+                 PrimExpr ascend_layout = 0);
 
   TVM_DEFINE_OBJECT_REF_METHODS(Layout, ObjectRef, LayoutNode);
 };

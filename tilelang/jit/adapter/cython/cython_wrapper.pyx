@@ -34,7 +34,7 @@ cdef class CythonKernelWrapper:
         self.param_dtypes = [param.dtype for param in params]
         # Convert TVM shape arrays to native Python lists
         self.param_shapes = []
-        self.get_current_device = torch.cuda.current_device
+        self.get_current_device = torch.npu.current_device
         for param in params:
             native_shape = []
             for dim in param.shape:
@@ -74,18 +74,10 @@ cdef class CythonKernelWrapper:
         cdef int total_dynamic_symbolics = len(self.dynamic_symbolic_map)
 
         # Ensure the number of inputs matches expected parameter count
-        if total_params != total_inputs + total_result_idx:
-            raise ValueError(
-                f"Expected {len(self.params)} inputs, got {len(inputs) + len(self.result_idx)} with {len(inputs)} inputs and {len(self.result_idx)} outputs"
-            )
 
-        # Use current CUDA stream if none specified
         if stream == -1: 
-            if torch.cuda.is_available():
-                try:
-                    stream = torch._C._cuda_getCurrentRawStream(torch.cuda.current_device())
-                except ImportError:
-                    stream = torch.cuda.current_stream().cuda_stream
+            if torch.npu.is_available():
+                stream = torch.npu.current_stream().npu_stream
             else:
                 stream = 0
 
@@ -106,7 +98,7 @@ cdef class CythonKernelWrapper:
                                 shape.append(tensor_list[ref_tensor_idx].shape[ref_shape_idx])
                     else:  # Already converted to Python int during initialization
                         shape.append(s)
-                device = inputs[0].device if len(inputs) > 0 else torch.cuda.current_device()
+                device = inputs[0].device if len(inputs) > 0 else torch.npu.current_device()
                 tensor = torch.empty(*shape, dtype=dtype, device=device)
             else:
                 tensor = inputs[ins_idx]
@@ -163,7 +155,7 @@ cdef class CythonKernelWrapper:
         for _, (buffer_idx, shape_idx) in self.dynamic_symbolic_map.items():
             call_args.append(tensor_list[buffer_idx].shape[shape_idx])
 
-        # Add CUDA stream to kernel arguments
+        # Add npu stream to kernel arguments
         call_args.append(ctypes.c_void_p(stream))
 
         # Execute the kernel

@@ -1,17 +1,13 @@
 # Copyright (c) Tile-AI Corporation.
 # Licensed under the MIT License.
 from typing import Optional
-from .utils import is_cuda_target, is_hip_target, is_cpu_target
 from tilelang import tvm as tvm
-from tilelang.contrib.nvcc import get_target_compute_version, get_nvcc_compiler
-from tvm.target import Target
 import ctypes
 import os
 import tempfile
 import subprocess
 import logging
 from tilelang.env import TILELANG_TEMPLATE_PATH
-from tilelang.contrib.rocm import find_rocm_path, get_rocm_arch
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +17,7 @@ class LibraryGenerator(object):
     libpath: Optional[str] = None
     lib_code: Optional[str] = None
 
-    def __init__(self, target: Target):
+    def __init__(self, target: str):
         self.target = target
 
     def update_lib_code(self, lib_code: str):
@@ -34,65 +30,44 @@ class LibraryGenerator(object):
         return ctypes.CDLL(lib_path)
 
     def compile_lib(self, timeout: float = None):
-        target = self.target
-        if is_cuda_target(target):
-            from tilelang.env import CUTLASS_INCLUDE_DIR
-            src = tempfile.NamedTemporaryFile(mode="w", suffix=".cu", delete=False)
-            compute_version = "".join(get_target_compute_version(target).split("."))
-            if compute_version == "90":
-                compute_version = "90a"
-            libpath = src.name.replace(".cu", ".so")
-
-            command = [
-                get_nvcc_compiler(),
-                "-std=c++17",
-                "-w",  # Disable all warning messages
-                "-Xcudafe",
-                "--diag_suppress=177",
-                "--compiler-options",
-                "'-fPIC'",
-                "-lineinfo",
-                "--shared",
-                src.name,
-                "-lcuda",
-                "-gencode",
-                f"arch=compute_{compute_version},code=sm_{compute_version}",
-            ]
-            command += [
-                "-I" + CUTLASS_INCLUDE_DIR,
-            ]
-
-        elif is_hip_target(target):
-            from tilelang.env import COMPOSABLE_KERNEL_INCLUDE_DIR
-            src = tempfile.NamedTemporaryFile(mode="w", suffix=".cpp", delete=False)
-            libpath = src.name.replace(".cpp", ".so")
-            rocm_path = find_rocm_path()
-            arch = get_rocm_arch(rocm_path)
-            command = [
-                "hipcc",
-                "-std=c++17",
-                "-fPIC",
-                f"--offload-arch={arch}",
-                "--shared",
-                src.name,
-            ]
-            command += [
-                "-I" + COMPOSABLE_KERNEL_INCLUDE_DIR,
-            ]
-        elif is_cpu_target(target):
-            from tilelang.contrib.cc import get_cplus_compiler
-            src = tempfile.NamedTemporaryFile(mode="w", suffix=".cpp", delete=False)
-            libpath = src.name.replace(".cpp", ".so")
-
-            command = [get_cplus_compiler(), "-std=c++17", "-fPIC", "-shared", src.name]
-            command += [
-                "-I" + TILELANG_TEMPLATE_PATH,
-            ]
-        else:
-            raise ValueError(f"Unsupported target: {target}")
-
-        command += [
+        src = tempfile.NamedTemporaryFile(mode="w", suffix=".cpp", delete=False)
+        libpath = src.name.replace(".cpp", ".so")
+        ASCEND_HOME_PATH = os.environ["ASCEND_HOME_PATH"]
+        TL_ROOT = os.environ["TL_ROOT"]
+        command = [
+            "bisheng",
+            "--cce-aicore-arch=dav-c220",
+            "-O2",
+            "-std=c++17", "-xcce",
+            "-mllvm", "-cce-aicore-stack-size=0x8000",
+            "-mllvm", "-cce-aicore-function-stack-size=0x8000",
+            "-mllvm", "-cce-aicore-record-overflow=true",
+            "-mllvm", "-cce-aicore-addr-transform",
+            "-mllvm", "-cce-aicore-dcci-insert-for-scalar=false",
+            "-DL2_CACHE_HINT",
+            f"-I{ASCEND_HOME_PATH}/compiler/tikcpp",
+            f"-I{ASCEND_HOME_PATH}/compiler/tikcpp/tikcfw",
+            f"-I{ASCEND_HOME_PATH}/compiler/tikcpp/tikcfw/impl",
+            f"-I{ASCEND_HOME_PATH}/compiler/tikcpp/tikcfw/interface",
+            f"-I{ASCEND_HOME_PATH}/include",
+            f"-I{ASCEND_HOME_PATH}/include/experiment/msprof",
+            f"-I{ASCEND_HOME_PATH}/include/experiment/runtime",
+            f"-I{TL_ROOT}/3rdparty/catlass/include",
             "-I" + TILELANG_TEMPLATE_PATH,
+            f"-L{ASCEND_HOME_PATH}/lib64",
+            "-Wno-macro-redefined",
+            "-Wno-ignored-attributes",
+            "-lruntime",
+            "-lstdc++",
+            "-lascendcl",
+            "-lm",
+            "-ltiling_api",
+            "-lplatform",
+            "-lc_sec",
+            "-ldl",
+            "-fPIC",
+            "--shared",
+            src.name,
         ]
         command += ["-o", libpath]
 

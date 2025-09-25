@@ -622,10 +622,10 @@ class TLWrapper(BaseWrapper):
     device_mod: Optional[IRModule] = None
     host_mod: Optional[IRModule] = None
     pass_configs: Optional[Dict[str, Any]] = None
-    target: Optional[Target] = None
+    target: Optional[str] = None
     lib: Optional[object] = None
 
-    def __init__(self, target: Target):
+    def __init__(self, target: str):
         super().__init__()
         self.scheduled_ir_module = None
         self.pass_configs = None
@@ -647,19 +647,14 @@ class TLWrapper(BaseWrapper):
     # Get Scheduled Rt Module and return source to be compiled
     def wrap(self, c_source: str):
         assert self.scheduled_ir_module is not None, "Please assign optimized module first."
-        if is_cuda_target(self.target):
-            wrapper_class = TLCUDASourceWrapper
-        elif is_hip_target(self.target):
-            wrapper_class = TLHIPSourceWrapper
-        elif is_cpu_target(self.target):
-            wrapper_class = TLCPUSourceWrapper
-        else:
-            raise ValueError(f"Unsupported platform: {self.arch.platform}")
-        wrapper = wrapper_class(
-            scheduled_ir_module=self.scheduled_ir_module,
-            source=c_source,
-            target=self.target,
-            device_mod=self.device_mod,
-            host_mod=self.host_mod,
-            pass_configs=self.pass_configs)
-        return wrapper.lib_code
+        # TODO: support NPU
+        return c_source
+        # wrapper_class = TLNPUSourceWrapper
+        # wrapper = wrapper_class(
+        #     scheduled_ir_module=self.scheduled_ir_module,
+        #     source=c_source,
+        #     target=self.target,
+        #     device_mod=self.device_mod,
+        #     host_mod=self.host_mod,
+        #     pass_configs=self.pass_configs)
+        # return wrapper.lib_code

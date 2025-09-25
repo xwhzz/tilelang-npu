@@ -175,3 +175,67 @@ def c2d_im2col(
         dilation,
         pad,
     )
+
+
+def npu_copy_v2(
+    src: Union[tir.Buffer, tir.BufferLoad, tir.BufferRegion],
+    dst: Union[tir.Buffer, tir.BufferLoad],
+    srcN = -1,
+    enable_relu: bool = False
+):
+    """Copy data between memory regions.
+
+    Args:
+        src (Union[tir.Buffer, tir.BufferLoad, tir.BufferRegion]): Source memory region
+        dst (Union[tir.Buffer, tir.BufferLoad]): Destination memory region
+        coalesced_width (Optional[int], optional): Width for coalesced memory access. Defaults to None.
+
+    Raises:
+        TypeError: If copy extents cannot be deduced from arguments
+
+    Returns:
+        tir.Call: A handle to the copy operation
+    """
+    if isinstance(src, tir.Buffer) and isinstance(dst, tir.Buffer):
+        ir.assert_structural_equal(src.shape, dst.shape)
+
+    src_shape = []
+    if isinstance(src, tir.Buffer):
+        src_shape = src.shape
+    else:
+        src_shape = src.buffer.shape
+
+    def get_extent(data):
+        if isinstance(data, tir.Var) and T.has_let_value(data):
+            data = T.get_let_value(data)
+        if isinstance(data, tir.Buffer):
+            return data.shape
+        elif isinstance(data, tir.BufferRegion):
+            return [x.extent for x in data.region]
+        else:
+            return None
+
+    src_extent = get_extent(src)
+    dst_extent = get_extent(dst)
+    assert src_extent or dst_extent, "Can't deduce copy extents from args"
+    src_extent = list(src_extent) if src_extent else [1] * len(dst_extent)
+    dst_extent = list(dst_extent) if dst_extent else [1] * len(src_extent)
+    extent = max(src_extent, dst_extent)
+
+    def _to_region(data, access_type):
+        if isinstance(data, tir.Var) and T.has_let_value(data):
+            data = T.get_let_value(data)
+        if isinstance(data, tir.Buffer):
+            return buffer_to_tile_region(data, access_type)
+        elif isinstance(data, tir.BufferRegion):
+            return buffer_region_to_tile_region(data, access_type, extent[-len(data.buffer.shape):])
+        else:
+            return buffer_load_to_tile_region(data, access_type, extent[-len(data.buffer.shape):])
+
+    src = _to_region(src, "r")
+    dst = _to_region(dst, "w")
+    if srcN == -1:
+        # TODO: need check
+        srcN = src_shape[-1]
+
+    return tir.call_intrin("handle", tir.op.Op.get("tl.ascend_copy"), src, dst, srcN, enable_relu)

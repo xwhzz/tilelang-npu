@@ -15,3 +15,5 @@ from .mma_layout import get_swizzle_layout  # noqa: F401
 from .mma_layout import make_mma_swizzle_layout  # noqa: F401
 
 from .mfma_layout import make_mfma_swizzle_layout  # noqa: F401
+
+from .ascend_layout import make_zn_layout, make_col_major_layout, make_nz_layout  # noqa: F401
