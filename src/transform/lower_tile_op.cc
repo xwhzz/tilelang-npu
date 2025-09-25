@@ -207,7 +207,8 @@ private:
         layout_map_.Set(buffer, layout);
       }
     } else if (op->annotations.count("address_map")) {
-      address_map_ = op->annotations.at("address_map").as<Map<Var, PrimExpr>>().value();
+      address_map_ =
+          op->annotations.at("address_map").as<Map<Var, PrimExpr>>().value();
     }
     auto block = Downcast<Block>(arith::IRMutatorWithAnalyzer::VisitStmt_(op));
     auto block_ptr = block.CopyOnWrite();
@@ -441,10 +442,11 @@ private:
       thread_bounds = Range::FromMinExtent(0, 1);
     }
 
-    auto lowered = tile_op->Lower(
-        LowerArgs{target_, thread_bounds, thread_var_->var, callback,
-                  layout_map_, buffer_remap_, disable_tma_lower, resource_scope_},
-        analyzer_);
+    auto lowered =
+        tile_op->Lower(LowerArgs{target_, thread_bounds, thread_var_->var,
+                                 callback, layout_map_, buffer_remap_,
+                                 disable_tma_lower, resource_scope_},
+                       analyzer_);
     return IRMutatorWithAnalyzer::VisitStmt(lowered);
   }
 

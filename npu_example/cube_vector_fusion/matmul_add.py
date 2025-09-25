@@ -5,7 +5,6 @@ import argparse
 import tilelang
 import tilelang.language as T
 import torch
-from tvm import DataType
 
 tilelang.cache.clear_cache()
 
@@ -18,6 +17,7 @@ args = parser.parse_args()
 M = args.m
 N = args.n
 K = args.k
+
 
 @tilelang.jit(out_idx=[-2])
 def matmul(M, N, K, block_M, block_N, block_K, dtype="float16", accum_dtype="float"):
@@ -56,13 +56,13 @@ def matmul(M, N, K, block_M, block_N, block_K, dtype="float16", accum_dtype="flo
                         T.gemm_v0(A_L1, B_L1, C_L0, init=True)
                     else:
                         T.gemm_v0(A_L1, B_L1, C_L0)
-                    
+
                     T.barrier_all()
 
                 T.copy(C_L0, C[bx * block_M, by * block_N])
 
                 T.set_cross_flag("FIX", 0)
-            
+
             with T.Scope("V"):
                 T.wait_cross_flag(0)
 
@@ -74,6 +74,7 @@ def matmul(M, N, K, block_M, block_N, block_K, dtype="float16", accum_dtype="flo
                 T.barrier_all()
 
                 T.copy(c_ub, C[bx * block_M + vid * block_M // VEC_NUM, by * block_N])
+
     return main
 
 
@@ -85,7 +86,6 @@ a = torch.randn(M, K).half().npu()
 b = torch.randn(K, N).half().npu()
 d = torch.randn(M, N).half().npu()
 print("init successful!")
-
 
 c = func(a, b, d)
 

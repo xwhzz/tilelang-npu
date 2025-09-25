@@ -13,7 +13,7 @@ from tilelang.jit.adapter import (
     CtypesKernelAdapter,
     CythonKernelAdapter,
 )
-from tilelang.utils.target import determine_target, AVALIABLE_TARGETS
+
 from tilelang.profiler import Profiler, TensorSupplyType
 from tilelang.engine.param import KernelParam, CompiledArtifact
 
@@ -89,7 +89,6 @@ class JITKernel(object):
             pass_configs = {}
         self.pass_configs = pass_configs
 
-
         # Validate the execution backend.
         assert execution_backend in [
             "dlpack",
@@ -153,14 +152,11 @@ class JITKernel(object):
 
     def _generate_extra_args(self, *args):
         modify_args = ()
-        import torch
-        import torch_npu
-        import ctypes
         # process input tensor
         for item in args:
             modify_args += (item,)
 
-        for k, v in self.adapter.dynamic_symbolic_map.items():
+        for _k, v in self.adapter.dynamic_symbolic_map.items():
             modify_args = modify_args + (args[v[0]].shape[v[1]],)
 
         return modify_args

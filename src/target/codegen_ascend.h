@@ -85,7 +85,6 @@ private:
 
   Map<Var, PrimExpr> address_map_;
 
-
   Map<String, PrimExpr> address_offset_;
 };
 

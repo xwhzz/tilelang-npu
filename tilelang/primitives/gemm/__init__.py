@@ -3,7 +3,6 @@
 
 from typing import Optional
 from tvm import tir
-from tilelang.utils import is_local, is_fragment, is_shared
 from tilelang.primitives.gemm.base import GemmWarpPolicy
 from tilelang.primitives.gemm.gemm_mma import (
     GemmPrimitiveMMA,)

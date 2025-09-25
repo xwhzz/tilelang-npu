@@ -177,12 +177,10 @@ def c2d_im2col(
     )
 
 
-def npu_copy_v2(
-    src: Union[tir.Buffer, tir.BufferLoad, tir.BufferRegion],
-    dst: Union[tir.Buffer, tir.BufferLoad],
-    srcN = -1,
-    enable_relu: bool = False
-):
+def npu_copy_v2(src: Union[tir.Buffer, tir.BufferLoad, tir.BufferRegion],
+                dst: Union[tir.Buffer, tir.BufferLoad],
+                srcN=-1,
+                enable_relu: bool = False):
     """Copy data between memory regions.
 
     Args:
@@ -199,11 +197,7 @@ def npu_copy_v2(
     if isinstance(src, tir.Buffer) and isinstance(dst, tir.Buffer):
         ir.assert_structural_equal(src.shape, dst.shape)
 
-    src_shape = []
-    if isinstance(src, tir.Buffer):
-        src_shape = src.shape
-    else:
-        src_shape = src.buffer.shape
+    src_shape = src.shape if isinstance(src, tir.Buffer) else src.buffer.shape
 
     def get_extent(data):
         if isinstance(data, tir.Var) and T.has_let_value(data):

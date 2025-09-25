@@ -7,15 +7,14 @@ torch.manual_seed(0)
 
 tilelang.disable_cache()
 
-@tilelang.jit(
-    out_idx=[3],
-)
+
+@tilelang.jit(out_idx=[3],)
 def flash_attention_fwd(
     heads,
     dim,
 ):
     block_M, block_N = 64, 64
-    
+
     batch = 1
     seq_len = 128
 
@@ -30,15 +29,15 @@ def flash_attention_fwd(
 
     @T.prim_func
     def main(
-        Q: T.Tensor(shape, dtype),  # type: ignore
-        K: T.Tensor(shape, dtype),  # type: ignore
-        V: T.Tensor(shape, dtype),  # type: ignore
-        Output: T.Tensor(shape, dtype),  # type: ignore
+            Q: T.Tensor(shape, dtype),  # type: ignore
+            K: T.Tensor(shape, dtype),  # type: ignore
+            V: T.Tensor(shape, dtype),  # type: ignore
+            Output: T.Tensor(shape, dtype),  # type: ignore
 
-        # TODO: implement automatically 
+            # TODO: implement automatically
         workspace_1: T.Tensor([block_num, block_M, block_N], accum_dtype),
-        workspace_2: T.Tensor([block_num, block_M, block_N], dtype),
-        workspace_3: T.Tensor([block_num, block_M, dim], accum_dtype),
+            workspace_2: T.Tensor([block_num, block_M, block_N], dtype),
+            workspace_3: T.Tensor([block_num, block_M, dim], accum_dtype),
     ):
         with T.Kernel(block_num, is_npu=True) as (cid, vid):
             bx = cid % (seq_len // block_M)
@@ -51,7 +50,6 @@ def flash_attention_fwd(
 
             acc_s_l1 = T.alloc_L1([block_M, block_N], dtype)
 
-
             acc_s_l0c = T.alloc_L0C([block_M, block_N], accum_dtype)
             acc_o_l0c = T.alloc_L0C([block_M, dim], accum_dtype)
 
@@ -62,7 +60,8 @@ def flash_attention_fwd(
             acc_s_ub = T.alloc_ub([block_M // 2, block_N], accum_dtype)
             m_i_prev = T.alloc_ub([block_M // 2], accum_dtype)
             acc_s_ub_ = T.alloc_ub([block_M // 2, block_N], accum_dtype)
-            tmp_ub = T.alloc_ub([3 * DataType(accum_dtype).bits // 8 * block_M // 2 * block_N], "uint8")
+            tmp_ub = T.alloc_ub([3 * DataType(accum_dtype).bits // 8 * block_M // 2 * block_N],
+                                "uint8")
             sumexp_i_ub = T.alloc_ub([block_M // 2], accum_dtype)
             acc_s_half = T.alloc_ub([block_M // 2, block_N], dtype)
             acc_o_ub = T.alloc_ub([block_M // 2, dim], accum_dtype)
@@ -130,7 +129,7 @@ def flash_attention_fwd(
                 T.fill(m_i, -2**30)
                 T.barrier_all()
 
-                for k in T.serial(T.ceildiv(seq_len, block_N)):
+                for _k in T.serial(T.ceildiv(seq_len, block_N)):
                     T.fill(acc_s_ub, 0.0)
                     T.barrier_all()
 
@@ -138,12 +137,14 @@ def flash_attention_fwd(
                     T.barrier_all()
 
                     T.wait_cross_flag(0)
-                    T.copy(workspace_1[cid, vid * block_M // 2:vid * block_M // 2 + block_M // 2, :], acc_s_ub_)
+                    T.copy(
+                        workspace_1[cid, vid * block_M // 2:vid * block_M // 2 + block_M // 2, :],
+                        acc_s_ub_)
                     T.barrier_all()
-                    
+
                     T.add(acc_s_ub, acc_s_ub, acc_s_ub_)
                     T.barrier_all()
-                    
+
                     T.mul(acc_s_ub, acc_s_ub, sm_scale)
                     T.barrier_all()
 
@@ -161,30 +162,32 @@ def flash_attention_fwd(
 
                     for h_i in range(block_M // 2):
                         T.barrier_all()
-                        T.sub(acc_s_ub[h_i, :], acc_s_ub[h_i, :], m_i[h_i]) # -
+                        T.sub(acc_s_ub[h_i, :], acc_s_ub[h_i, :], m_i[h_i])  # -
                         T.barrier_all()
 
                     T.exp(acc_s_ub, acc_s_ub)
                     T.barrier_all()
 
-                    T.reduce_sum(sumexp_i_ub, acc_s_ub,tmp_ub, dim=-1)
+                    T.reduce_sum(sumexp_i_ub, acc_s_ub, tmp_ub, dim=-1)
                     T.barrier_all()
 
-                    T.mul(sumexp, sumexp, m_i_prev) # check
+                    T.mul(sumexp, sumexp, m_i_prev)  # check
                     T.barrier_all()
 
                     T.add(sumexp, sumexp, sumexp_i_ub)
                     T.barrier_all()
-                    
+
                     for h_i in range(block_M // 2):
                         T.barrier_all()
                         T.mul(acc_o[h_i, :], acc_o[h_i, :], m_i_prev[h_i])
                         T.barrier_all()
-                    
+
                     T.copy(acc_s_ub, acc_s_half)
                     T.barrier_all()
 
-                    T.copy(acc_s_half, workspace_2[cid, vid * block_M // 2:vid * block_M // 2 + block_M // 2, :])
+                    T.copy(
+                        acc_s_half,
+                        workspace_2[cid, vid * block_M // 2:vid * block_M // 2 + block_M // 2, :])
                     T.barrier_all()
 
                     T.set_cross_flag("MTE3", 1)
@@ -192,7 +195,9 @@ def flash_attention_fwd(
                     T.wait_cross_flag(2)
                     T.barrier_all()
 
-                    T.copy(workspace_3[cid, vid * block_M // 2:vid * block_M // 2 + block_M // 2, :], acc_o_ub)
+                    T.copy(
+                        workspace_3[cid, vid * block_M // 2:vid * block_M // 2 + block_M // 2, :],
+                        acc_o_ub)
                     T.barrier_all()
 
                     T.add(acc_o, acc_o, acc_o_ub)
@@ -201,15 +206,17 @@ def flash_attention_fwd(
                     T.set_cross_flag("V", 3)
                     T.barrier_all()
 
-                
                 for h_i in range(block_M // 2):
                     T.barrier_all()
                     T.div(acc_o[h_i, :], acc_o[h_i, :], sumexp[h_i])
                     T.barrier_all()
-                
+
                 T.copy(acc_o, acc_o_half)
                 T.barrier_all()
-                T.copy(acc_o_half, Output[bz, by, bx * block_M + vid * block_M // 2 : bx * block_M + vid * block_M // 2 + block_M // 2, :])
+                T.copy(
+                    acc_o_half, Output[bz, by, bx * block_M + vid * block_M // 2:bx * block_M +
+                                       vid * block_M // 2 + block_M // 2, :])
+
     return main
 
 
@@ -228,6 +235,7 @@ def ref_flash_attn(q, k, v):
     acc = acc.softmax(dim=-1)
     o = torch.einsum("bhsk,bhkd->bhsd", acc, v)
     return o.to(torch.float16)
+
 
 B, S, H, D = 1, 128, 1, 512
 

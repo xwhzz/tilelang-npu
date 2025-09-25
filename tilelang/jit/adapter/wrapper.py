@@ -6,7 +6,7 @@ from tilelang import tvm as tvm
 from typing import Optional, List, Dict, Union, Any
 from tvm import IRModule
 from tvm.target import Target
-from .utils import match_declare_kernel, match_declare_kernel_cpu, is_cuda_target, is_hip_target, is_cpu_target, get_annotated_mod
+from .utils import match_declare_kernel, match_declare_kernel_cpu, get_annotated_mod
 import re
 import logging
 import textwrap

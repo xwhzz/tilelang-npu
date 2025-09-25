@@ -360,7 +360,8 @@ void CodeGenTileLangAscend::VisitExpr_(const FloorModNode *op,
   os << ")";
 }
 
-void CodeGenTileLangAscend::VisitExpr_(const BufferLoadNode *op, std::ostream &os) {
+void CodeGenTileLangAscend::VisitExpr_(const BufferLoadNode *op,
+                                       std::ostream &os) {
   static int index = 0;
   Array<PrimExpr> indices;
   indices.push_back(0);
@@ -371,7 +372,8 @@ void CodeGenTileLangAscend::VisitExpr_(const BufferLoadNode *op, std::ostream &o
   auto new_var_name = var_name + "_scalar_" + std::to_string(index);
 
   this->PrintIndent();
-  this->stream << "auto " << new_var_name << "= " << var_name << ".GetValue(" << PrintExpr(op->indices.back()) << ");\n";
+  this->stream << "auto " << new_var_name << "= " << var_name << ".GetValue("
+               << PrintExpr(op->indices.back()) << ");\n";
   this->PrintIndent();
   this->stream << "AscendC::PipeBarrier<PIPE_ALL>();\n";
   os << new_var_name;
@@ -380,7 +382,8 @@ void CodeGenTileLangAscend::VisitExpr_(const BufferLoadNode *op, std::ostream &o
 }
 
 void CodeGenTileLangAscend::VisitExpr_(const CallNode *op, std::ostream &os) {
-  auto print_buffer_offset = [&](const CallNode *op, bool has_offset = true) -> std::string {
+  auto print_buffer_offset = [&](const CallNode *op,
+                                 bool has_offset = true) -> std::string {
     auto _var = op->args[1].as<VarNode>();
     auto _var_offset = PrintExpr(op->args[2]);
     auto _var_name = var_idmap_[_var];
@@ -413,15 +416,19 @@ void CodeGenTileLangAscend::VisitExpr_(const CallNode *op, std::ostream &os) {
 
       if (op_name.find("copy_l0c_to_gm") != std::string::npos) {
         this->PrintIndent();
-        // this->stream << "auto " << src_var_id << "_ = " << src_var_id << ".GetWithOffset<"
+        // this->stream << "auto " << src_var_id << "_ = " << src_var_id <<
+        // ".GetWithOffset<"
         //              << getType(src_type) << ">(0, " << src_offset << ");\n";
         this->stream << op_name << "(" << dst_var_id << "[" << dst_offset
-                     << "], " << src_var_id << "[" << src_offset << "], "<< PrintExpr(op->args[3]) << ");\n";
+                     << "], " << src_var_id << "[" << src_offset << "], "
+                     << PrintExpr(op->args[3]) << ");\n";
       } else if (op_name.find("copy_gm_to_l1") != std::string::npos) {
-        // this->stream << "auto " << dst_var_id << "_ = " << dst_var_id << ".GetWithOffset<"
+        // this->stream << "auto " << dst_var_id << "_ = " << dst_var_id <<
+        // ".GetWithOffset<"
         //              << getType(dst_type) << ">(0, " << dst_offset << ");\n";
         this->PrintIndent();
-        this->stream << op_name << "(" << dst_var_id << "[" << dst_offset << "], " << src_var_id << "[" << src_offset << "]);\n";
+        this->stream << op_name << "(" << dst_var_id << "[" << dst_offset
+                     << "], " << src_var_id << "[" << src_offset << "]);\n";
       } else if (op_name.find("copy_l1_to_l0a") != std::string::npos) {
 
         auto type = getType(src_type);
@@ -429,7 +436,8 @@ void CodeGenTileLangAscend::VisitExpr_(const CallNode *op, std::ostream &os) {
         this->stream << "auto " << src_var_id << "_ = " << src_var_id << ".Get<"
                      << type << ">();\n";
         this->PrintIndent();
-        // this->stream << "auto " << dst_var_id << "_ = " << dst_var_id << ".Get<"
+        // this->stream << "auto " << dst_var_id << "_ = " << dst_var_id <<
+        // ".Get<"
         //              << type << ">();\n";
         this->PrintIndent();
         this->stream << op_name << "(" << dst_var_id << "[" << dst_offset
@@ -449,24 +457,33 @@ void CodeGenTileLangAscend::VisitExpr_(const CallNode *op, std::ostream &os) {
                      << "], " << src_var_id << "_[" << src_offset << "]);\n";
       } else if (op_name.find("copy_gm_to_ub") != std::string::npos) {
         this->PrintIndent();
-        // this->stream << op_name << "(" << dst_var_id << "[" << dst_offset << "], " << src_var_id << "[" << src_offset << "]);\n";
+        // this->stream << op_name << "(" << dst_var_id << "[" << dst_offset <<
+        // "], " << src_var_id << "[" << src_offset << "]);\n";
         this->stream << op_name << "(" << dst_var_id << "[" << dst_offset
-                     << "], " << src_var_id << "[" << src_offset << "], "<< PrintExpr(op->args[3]) << ");\n";
+                     << "], " << src_var_id << "[" << src_offset << "], "
+                     << PrintExpr(op->args[3]) << ");\n";
       } else if (op_name.find("copy_ub_to_gm") != std::string::npos) {
-        // this->stream << "auto " << src_var_id << "_ = " << src_var_id << ".GetWithOffset<"
-        //              << getType(src_type) << ">(0, " << src_offset << "/ 2);\n";
+        // this->stream << "auto " << src_var_id << "_ = " << src_var_id <<
+        // ".GetWithOffset<"
+        //              << getType(src_type) << ">(0, " << src_offset << "/
+        //              2);\n";
         this->PrintIndent();
-        this->stream << op_name << "(" << dst_var_id << "[" <<  dst_offset << "], " << src_var_id << "[" << src_offset << "]);\n";
+        this->stream << op_name << "(" << dst_var_id << "[" << dst_offset
+                     << "], " << src_var_id << "[" << src_offset << "]);\n";
       } else if (op_name.find("copy_ub_to_ub") != std::string::npos) {
-        // this->stream << "auto " << dst_var_id << "_1 = " << dst_var_id << ".GetWithOffset<"
-        //              << getType(dst_type) << ">(0, " << dst_offset << "/ 2);\n";
+        // this->stream << "auto " << dst_var_id << "_1 = " << dst_var_id <<
+        // ".GetWithOffset<"
+        //              << getType(dst_type) << ">(0, " << dst_offset << "/
+        //              2);\n";
         // this->PrintIndent();
-        // this->stream << "auto " << src_var_id << "_2 = " << src_var_id << ".GetWithOffset<"
-        //              << getType(src_type) << ">(0, " << src_offset << "/ 2);\n";
+        // this->stream << "auto " << src_var_id << "_2 = " << src_var_id <<
+        // ".GetWithOffset<"
+        //              << getType(src_type) << ">(0, " << src_offset << "/
+        //              2);\n";
         this->PrintIndent();
-        this->stream << op_name << "(" << dst_var_id << "[" << dst_offset << "], " << src_var_id << "[" << src_offset << "]);\n";
-      }
-      else {
+        this->stream << op_name << "(" << dst_var_id << "[" << dst_offset
+                     << "], " << src_var_id << "[" << src_offset << "]);\n";
+      } else {
         this->PrintIndent();
         this->stream << "not implemented yet\n";
       }
@@ -552,7 +569,8 @@ void CodeGenTileLangAscend::VisitExpr_(const CallNode *op, std::ostream &os) {
       this->EndScope(func_scope);
       this->PrintIndent();
       this->stream << "}\n";
-    } else if (op_name.find("AscendC::CrossCoreWaitFlag") != std::string::npos) {
+    } else if (op_name.find("AscendC::CrossCoreWaitFlag") !=
+               std::string::npos) {
       this->PrintIndent();
       this->stream << op_name << "(" << PrintExpr(op->args[1]) << ");\n";
     } else if (op_name.find("AscendC::CrossCoreSetFlag") != std::string::npos) {
@@ -561,7 +579,9 @@ void CodeGenTileLangAscend::VisitExpr_(const CallNode *op, std::ostream &os) {
     } else if (op_name.find("Duplicate") != std::string::npos) {
       this->PrintIndent();
       auto var_name = print_buffer_offset(op->args[1].as<CallNode>());
-      this->stream << op_name << "(" << var_name << ", " << PrintExpr(op->args[2]) << ", " << PrintExpr(op->args[3]) << ");\n";
+      this->stream << op_name << "(" << var_name << ", "
+                   << PrintExpr(op->args[2]) << ", " << PrintExpr(op->args[3])
+                   << ");\n";
     } else if (op_name.find("PipeBarrier") != std::string::npos) {
       this->PrintIndent();
       this->stream << op_name << "();\n";
@@ -577,7 +597,7 @@ void CodeGenTileLangAscend::VisitExpr_(const CallNode *op, std::ostream &os) {
         // this->stream << instr;
       }
       this->PrintIndent();
-      this->stream << op_name << "("; 
+      this->stream << op_name << "(";
       for (int i = 0; i < var_names.size(); i++) {
         this->stream << var_names[i];
         if (i != var_names.size() - 1) {
@@ -588,7 +608,7 @@ void CodeGenTileLangAscend::VisitExpr_(const CallNode *op, std::ostream &os) {
       // this->EndScope(func_scope);
       // this->PrintIndent();
       // this->stream << "}\n";
-    } else if (op_name.find("MergeSort") != std::string::npos){
+    } else if (op_name.find("MergeSort") != std::string::npos) {
       // vtm::Dump(op);
       std::vector<std::string> var_names;
       for (int i = 1; i < op->args.size() - 3; i++) {
@@ -597,22 +617,26 @@ void CodeGenTileLangAscend::VisitExpr_(const CallNode *op, std::ostream &os) {
       }
       this->PrintIndent();
       this->stream << op_name << "(";
-      for (int i =0; i < var_names.size(); i++) {
+      for (int i = 0; i < var_names.size(); i++) {
         this->stream << var_names[i];
         if (i != var_names.size() - 1) {
           this->stream << ", ";
         }
       }
-      this->stream << ", " << PrintExpr(op->args[op->args.size() - 3]) << ", " << PrintExpr(op->args[op->args.size() - 2]) << ", " << PrintExpr(op->args[op->args.size() - 1]) << ");\n";
+      this->stream << ", " << PrintExpr(op->args[op->args.size() - 3]) << ", "
+                   << PrintExpr(op->args[op->args.size() - 2]) << ", "
+                   << PrintExpr(op->args[op->args.size() - 1]) << ");\n";
     } else if (op_name.find("Sort") != std::string::npos) {
       // tvm::Dump(op);
       std::vector<std::string> var_names;
-      for (int i = 1; i < op->args.size() - 3;  i++) {
+      for (int i = 1; i < op->args.size() - 3; i++) {
         auto var_name = print_buffer_offset(op->args[i].as<CallNode>());
         var_names.push_back(var_name);
       }
 
-      auto var_name = print_buffer_offset(op->args[op->args.size() - 3].as<CallNode>(), false); // tensor with offset will be
+      auto var_name =
+          print_buffer_offset(op->args[op->args.size() - 3].as<CallNode>(),
+                              false); // tensor with offset will be
       var_names.push_back(var_name);
 
       this->PrintIndent();
@@ -623,7 +647,8 @@ void CodeGenTileLangAscend::VisitExpr_(const CallNode *op, std::ostream &os) {
           this->stream << ", ";
         }
       }
-      this->stream << ", " << PrintExpr(op->args[op->args.size() - 1]) << ");\n";
+      this->stream << ", " << PrintExpr(op->args[op->args.size() - 1])
+                   << ");\n";
     } else if (op_name.find("TopK") != std::string::npos) {
       // tvm::Dump(op);
       std::vector<std::string> var_names;
@@ -639,7 +664,8 @@ void CodeGenTileLangAscend::VisitExpr_(const CallNode *op, std::ostream &os) {
           this->stream << ", ";
         }
       }
-      this->stream << ", " << PrintExpr(op->args[op->args.size() - 1]) << ");\n";
+      this->stream << ", " << PrintExpr(op->args[op->args.size() - 1])
+                   << ");\n";
     } else if (op_name.find("GatherMask") != std::string::npos) {
       // tvm::Dump(op);
       std::vector<std::string> var_names;
@@ -655,33 +681,40 @@ void CodeGenTileLangAscend::VisitExpr_(const CallNode *op, std::ostream &os) {
           this->stream << ", ";
         }
       }
-      this->stream << ", " << PrintExpr(op->args[op->args.size() - 1]) << ");\n";
+      this->stream << ", " << PrintExpr(op->args[op->args.size() - 1])
+                   << ");\n";
     } else if (op_name.find("InitSortBuf") != std::string::npos) {
       tvm::Dump(op);
       this->PrintIndent();
       auto var_name = print_buffer_offset(op->args[1].as<CallNode>());
-      this->stream << op_name << "(" << var_name << ", " << PrintExpr(op->args[2]) << ");\n";
+      this->stream << op_name << "(" << var_name << ", "
+                   << PrintExpr(op->args[2]) << ");\n";
     } else if (op_name.find("AscendC::ArithProgression") != std::string::npos) {
       // tvm::Dump(op);
       this->PrintIndent();
       auto var_name = print_buffer_offset(op->args[1].as<CallNode>());
 
-      this->stream << op_name << "(" << var_name << ", " << PrintExpr(op->args[2]) << ", " << PrintExpr(op->args[3]) << ", " << PrintExpr(op->args[4]) << ");\n";
-    } else if (op_name == "AscendC::Add" || op_name == "AscendC::Max" || op_name == "AscendC::Sub" || op_name == "AscendC::Mul" || op_name == "AscendC::Exp") {
+      this->stream << op_name << "(" << var_name << ", "
+                   << PrintExpr(op->args[2]) << ", " << PrintExpr(op->args[3])
+                   << ", " << PrintExpr(op->args[4]) << ");\n";
+    } else if (op_name == "AscendC::Add" || op_name == "AscendC::Max" ||
+               op_name == "AscendC::Sub" || op_name == "AscendC::Mul" ||
+               op_name == "AscendC::Exp") {
       std::vector<std::string> var_names;
       for (int i = 1; i < op->args.size() - 1; i++) {
         auto var_name = print_buffer_offset(op->args[i].as<CallNode>());
         var_names.push_back(var_name);
       }
       this->PrintIndent();
-      this->stream << op_name << "("; 
+      this->stream << op_name << "(";
       for (int i = 0; i < var_names.size(); i++) {
         this->stream << var_names[i];
         if (i != var_names.size() - 1) {
           this->stream << ", ";
         }
       }
-      this->stream << ", " << PrintExpr(op->args[op->args.size() - 1]) << ");\n";
+      this->stream << ", " << PrintExpr(op->args[op->args.size() - 1])
+                   << ");\n";
     } else if (op_name == "AscendC::Muls" || op_name == "AscendC::Adds") {
       std::vector<std::string> var_names;
       for (int i = 1; i < 3; i++) {
@@ -692,7 +725,9 @@ void CodeGenTileLangAscend::VisitExpr_(const CallNode *op, std::ostream &os) {
       if (op->args[3].as<CallNode>()) {
         auto var_name = print_buffer_offset(op->args[3].as<CallNode>(), false);
         this->PrintIndent();
-        this->stream << "auto " << var_name << "_scalar = " << var_name << ".GetValue(" << PrintExpr(op->args[op->args.size() - 2]) << ");\n";
+        this->stream << "auto " << var_name << "_scalar = " << var_name
+                     << ".GetValue(" << PrintExpr(op->args[op->args.size() - 2])
+                     << ");\n";
         var_names.push_back(var_name + "_scalar");
         this->PrintIndent();
         this->stream << "AscendC::PipeBarrier<PIPE_ALL>();\n";
@@ -700,15 +735,16 @@ void CodeGenTileLangAscend::VisitExpr_(const CallNode *op, std::ostream &os) {
         var_names.push_back(PrintExpr(op->args[op->args.size() - 2]));
       }
       this->PrintIndent();
-      this->stream << op_name << "("; 
+      this->stream << op_name << "(";
       for (int i = 0; i < var_names.size(); i++) {
         this->stream << var_names[i];
         if (i != var_names.size() - 1) {
           this->stream << ", ";
         }
       }
-      
-      this->stream << ", " << PrintExpr(op->args[op->args.size() - 1]) << ");\n";
+
+      this->stream << ", " << PrintExpr(op->args[op->args.size() - 1])
+                   << ");\n";
     } else if (op_name == "AscendC::Divs") {
       std::vector<std::string> var_names;
       for (int i = 1; i < 3; i++) {
@@ -720,7 +756,9 @@ void CodeGenTileLangAscend::VisitExpr_(const CallNode *op, std::ostream &os) {
         auto var_name = print_buffer_offset(op->args[3].as<CallNode>(), false);
 
         this->PrintIndent();
-        this->stream << "auto " << var_name << "_scalar = 1.0f / " << var_name << ".GetValue(" << PrintExpr(op->args[op->args.size() - 2]) << ");\n";
+        this->stream << "auto " << var_name << "_scalar = 1.0f / " << var_name
+                     << ".GetValue(" << PrintExpr(op->args[op->args.size() - 2])
+                     << ");\n";
         var_names.push_back(var_name + "_scalar");
         this->PrintIndent();
         this->stream << "AscendC::PipeBarrier<PIPE_ALL>();\n";
@@ -728,15 +766,17 @@ void CodeGenTileLangAscend::VisitExpr_(const CallNode *op, std::ostream &os) {
         var_names.push_back(PrintExpr(op->args[op->args.size() - 2]));
       }
       this->PrintIndent();
-      this->stream << "AscendC::Muls" << "("; 
+      this->stream << "AscendC::Muls"
+                   << "(";
       for (int i = 0; i < var_names.size(); i++) {
         this->stream << var_names[i];
         if (i != var_names.size() - 1) {
           this->stream << ", ";
         }
       }
-      
-      this->stream << ", " << PrintExpr(op->args[op->args.size() - 1]) << ");\n";
+
+      this->stream << ", " << PrintExpr(op->args[op->args.size() - 1])
+                   << ");\n";
     } else if (op_name == "AscendC::Subs") {
       std::vector<std::string> var_names;
       for (int i = 1; i < 3; i++) {
@@ -748,7 +788,9 @@ void CodeGenTileLangAscend::VisitExpr_(const CallNode *op, std::ostream &os) {
         auto var_name = print_buffer_offset(op->args[3].as<CallNode>(), false);
 
         this->PrintIndent();
-        this->stream << "auto " << var_name << "_scalar = " << var_name << ".GetValue(" << PrintExpr(op->args[op->args.size() - 2]) << ");\n";
+        this->stream << "auto " << var_name << "_scalar = " << var_name
+                     << ".GetValue(" << PrintExpr(op->args[op->args.size() - 2])
+                     << ");\n";
         var_names.push_back("- " + var_name + "_scalar");
         this->PrintIndent();
         this->stream << "AscendC::PipeBarrier<PIPE_ALL>();\n";
@@ -756,17 +798,19 @@ void CodeGenTileLangAscend::VisitExpr_(const CallNode *op, std::ostream &os) {
         var_names.push_back(PrintExpr(op->args[op->args.size() - 2]));
       }
       this->PrintIndent();
-      this->stream << "AscendC::Adds" << "("; 
+      this->stream << "AscendC::Adds"
+                   << "(";
       for (int i = 0; i < var_names.size(); i++) {
         this->stream << var_names[i];
         if (i != var_names.size() - 1) {
           this->stream << ", ";
         }
       }
-      
-      this->stream << ", " << PrintExpr(op->args[op->args.size() - 1]) << ");\n";
+
+      this->stream << ", " << PrintExpr(op->args[op->args.size() - 1])
+                   << ");\n";
     }
-    
+
     else if (op_name.find("gemm_v0") != std::string::npos) {
       this->PrintIndent();
       auto a_var = op->args[1].as<CallNode>()->args[1].as<VarNode>();
@@ -784,11 +828,11 @@ void CodeGenTileLangAscend::VisitExpr_(const CallNode *op, std::ostream &os) {
       auto src_type = op->args[1].as<CallNode>()->args[0].as<CallNode>()->dtype;
       auto dst_type = op->args[3].as<CallNode>()->args[0].as<CallNode>()->dtype;
 
-
       this->stream << op_name << "(" << a_name << "[" << a_offset << "], "
-        << b_name << "[" << b_offset << "], " << c_name << "[" << c_offset << "], ascend_l0a, ascend_l0b, "  << PrintExpr(op->args[4]) << ");\n";
-    } 
-    else if (op_name.find("gemm_v1") != std::string::npos) {
+                   << b_name << "[" << b_offset << "], " << c_name << "["
+                   << c_offset << "], ascend_l0a, ascend_l0b, "
+                   << PrintExpr(op->args[4]) << ");\n";
+    } else if (op_name.find("gemm_v1") != std::string::npos) {
       this->PrintIndent();
       auto a_var = op->args[1].as<CallNode>()->args[1].as<VarNode>();
       auto b_var = op->args[2].as<CallNode>()->args[1].as<VarNode>();
@@ -805,9 +849,10 @@ void CodeGenTileLangAscend::VisitExpr_(const CallNode *op, std::ostream &os) {
       auto src_type = op->args[1].as<CallNode>()->args[0].as<CallNode>()->dtype;
       auto dst_type = op->args[3].as<CallNode>()->args[0].as<CallNode>()->dtype;
 
-
       this->stream << op_name << "(" << a_name << "[" << a_offset << "], "
-        << b_name << "[" << b_offset << "], " << c_name << "[" << c_offset << "], ascend_l0a, ascend_l0b, "  << PrintExpr(op->args[4]) << ");\n";
+                   << b_name << "[" << b_offset << "], " << c_name << "["
+                   << c_offset << "], ascend_l0a, ascend_l0b, "
+                   << PrintExpr(op->args[4]) << ");\n";
     }
 
   } else {
@@ -834,7 +879,8 @@ void CodeGenTileLangAscend::VisitStmt_(const AttrStmtNode *op) {
                    << " = AscendC::GetBlockIdx();\n";
       this->PrintIndent();
       this->stream << "if ASCEND_IS_AIV {\n";
-      this->PrintIndent(); this->PrintIndent();
+      this->PrintIndent();
+      this->PrintIndent();
       this->stream << this->block_id_ << " = " << this->block_id_ << " / 2;\n";
       this->PrintIndent();
       this->stream << "}\n";
@@ -887,15 +933,20 @@ void CodeGenTileLangAscend::VisitStmt_(const AllocateNode *op) {
   auto print_buffer = [&](const std::string &pos) {
     this->PrintIndent();
     if (address_map_.find(op->buffer_var) != address_map_.end()) {
-      stream << "auto " << vid << " = " << pos << ".GetWithOffset<" << type << ">(" << op->ConstantAllocationSize()
-           << ", " << PrintExpr(address_map_[op->buffer_var]) << ");\n";
+      stream << "auto " << vid << " = " << pos << ".GetWithOffset<" << type
+             << ">(" << op->ConstantAllocationSize() << ", "
+             << PrintExpr(address_map_[op->buffer_var]) << ");\n";
     } else {
       if (address_offset_.find(String(pos)) == address_offset_.end()) {
         address_offset_.Set(String(pos), 0);
       }
-      stream << "auto " << vid << " = " << pos << ".GetWithOffset<" << type << ">(" << op->ConstantAllocationSize()
-             << "," << PrintExpr(address_offset_[String(pos)]) << ");\n";
-      address_offset_.Set(String(pos), PrimExpr(int(op->ConstantAllocationSize() * op->dtype.bytes())) + address_offset_[String(pos)]);
+      stream << "auto " << vid << " = " << pos << ".GetWithOffset<" << type
+             << ">(" << op->ConstantAllocationSize() << ","
+             << PrintExpr(address_offset_[String(pos)]) << ");\n";
+      address_offset_.Set(
+          String(pos),
+          PrimExpr(int(op->ConstantAllocationSize() * op->dtype.bytes())) +
+              address_offset_[String(pos)]);
     }
   };
 
@@ -994,14 +1045,16 @@ void CodeGenTileLangAscend::PreFunctionBody(const PrimFunc &f) {
   stream << "AscendC::TBuf<AscendC::TPosition::B2> ascend_l0b;\n";
   this->PrintIndent();
   stream << "pipe.InitBuffer(ascend_l0b, 131072);\n";
-  
 
   this->PrintIndent();
-  stream << "AscendC::TBuf<AscendC::TPosition::A1> ascend_l1; pipe.InitBuffer(ascend_l1, 524032);\n";
+  stream << "AscendC::TBuf<AscendC::TPosition::A1> ascend_l1; "
+            "pipe.InitBuffer(ascend_l1, 524032);\n";
   this->PrintIndent();
-  stream << "AscendC::TBuf<AscendC::TPosition::CO1> ascend_l0c; pipe.InitBuffer(ascend_l0c, 131072);\n";
+  stream << "AscendC::TBuf<AscendC::TPosition::CO1> ascend_l0c; "
+            "pipe.InitBuffer(ascend_l0c, 131072);\n";
   this->PrintIndent();
-  stream << "AscendC::TBuf<AscendC::TPosition::VECCALC> ascend_ub; pipe.InitBuffer(ascend_ub, 196352);\n";
+  stream << "AscendC::TBuf<AscendC::TPosition::VECCALC> ascend_ub; "
+            "pipe.InitBuffer(ascend_ub, 196352);\n";
 
   this->PrintIndent();
   stream << "pipe.Destroy();\n";
@@ -1019,17 +1072,17 @@ void CodeGenTileLangAscend::VisitExpr_(const SelectNode *op, std::ostream &os) {
 }
 
 void ProcessHostInput(std::ostream &os, std::vector<std::string> &arg_names,
-  std::vector<const tir::VarNode*> &shape_vars)
-{
-    for (auto shape_var : shape_vars) {
-        os << ", " << "int64_t " << shape_var->name_hint;
-        arg_names.push_back(shape_var->name_hint);
-    }
+                      std::vector<const tir::VarNode *> &shape_vars) {
+  for (auto shape_var : shape_vars) {
+    os << ", "
+       << "int64_t " << shape_var->name_hint;
+    arg_names.push_back(shape_var->name_hint);
+  }
 }
 
-void PrintHostFunc(const PrimFunc &f, const std::string &name, std::ostringstream &os,
-                   std::string &core,
-                   std::vector<const tir::VarNode*> &shape_vars) {
+void PrintHostFunc(const PrimFunc &f, const std::string &name,
+                   std::ostringstream &os, std::string &core,
+                   std::vector<const tir::VarNode *> &shape_vars) {
   // TODO: implement dynamic shape version
   os << "extern \"C\" void call(";
   std::vector<std::string> arg_names;
@@ -1079,18 +1132,20 @@ void CodeGenTileLangAscend::AddFunction(const GlobalVar &gvar,
   auto func_name = static_cast<std::string>(global_symbol.value()) + "_kernel";
   this->stream << " " << func_name << "(";
 
-  std::vector<const tir::VarNode*> shape_vars;
+  std::vector<const tir::VarNode *> shape_vars;
   for (size_t i = 0; i < f->params.size(); ++i) {
     tir::Var v = f->params[i];
     std::string vid = AllocVarID(v.get());
     if (f->buffer_map.find(v) != f->buffer_map.end()) {
       tir::Buffer buffer = f->buffer_map[v];
       for (size_t j = 0; j < buffer->shape.size(); j++) {
-          auto shape_var = buffer->shape[j].as<VarNode>();
-          if (std::find(shape_vars.begin(), shape_vars.end(), shape_var) == shape_vars.end() && shape_var != 0) {
-              (void)AllocVarID(shape_var);
-              shape_vars.push_back(shape_var);
-          }
+        auto shape_var = buffer->shape[j].as<VarNode>();
+        if (std::find(shape_vars.begin(), shape_vars.end(), shape_var) ==
+                shape_vars.end() &&
+            shape_var != 0) {
+          (void)AllocVarID(shape_var);
+          shape_vars.push_back(shape_var);
+        }
       }
     }
 
@@ -1122,14 +1177,15 @@ void CodeGenTileLangAscend::AddFunction(const GlobalVar &gvar,
   }
   size_t index = 0;
   if (shape_vars.size() != 0) {
-      stream << ", ";
+    stream << ", ";
   }
   for (auto shape_var : shape_vars) {
-      stream << "int64_t" << " " << GetVarID(shape_var); // 当前写死int64_t
-      if (index != shape_vars.size() - 1) {
-          stream << ", ";
-      }
-      index++;
+    stream << "int64_t"
+           << " " << GetVarID(shape_var); // 当前写死int64_t
+    if (index != shape_vars.size() - 1) {
+      stream << ", ";
+    }
+    index++;
   }
   stream << ", uint64_t fftsAddr";
   stream << ") {\n";

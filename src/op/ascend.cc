@@ -128,13 +128,13 @@ Stmt AscendCopy::Lower(const LowerArgs &T, arith::Analyzer *analyzer) const {
     }
 
     if (print_src_layout) {
-    ICHECK(T.layout_map.count(src))
-        << "Layout map does not contain source buffer: " << src->name;
-    ss << T.layout_map[src]->AscendLayoutStr() << ", ";
+      ICHECK(T.layout_map.count(src))
+          << "Layout map does not contain source buffer: " << src->name;
+      ss << T.layout_map[src]->AscendLayoutStr() << ", ";
     } else if (print_dst_layout) {
-    ICHECK(T.layout_map.count(dst))
-        << "Layout map does not contain destination buffer: " << dst->name;
-    ss << T.layout_map[dst]->AscendLayoutStr() << ", ";
+      ICHECK(T.layout_map.count(dst))
+          << "Layout map does not contain destination buffer: " << dst->name;
+      ss << T.layout_map[dst]->AscendLayoutStr() << ", ";
     }
     int src_ndim = src->shape.size(), dst_ndim = dst->shape.size();
     ss << src->shape[src_ndim - 2] << ", " << src->shape[src_ndim - 1] << ", "
