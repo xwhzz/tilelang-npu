@@ -154,3 +154,5 @@ else
 fi
 
 echo "Installation script completed successfully."
+exec bash
+
