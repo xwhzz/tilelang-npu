@@ -20,13 +20,14 @@ M = args.m
 N = args.n
 K = args.k
 
+
 @tilelang.jit(out_idx=[-1])
 def matmul(M, N, K, block_M, block_N, block_K, K_L1, S1, S2, dtype="float16", accum_dtype="float"):
     m_num = M // block_M
     n_num = N // block_N
 
     core_num = 20
-    
+
     @T.macro
     def init_flag():
         T.set_flag("mte1", "mte2", 0)
@@ -34,7 +35,6 @@ def matmul(M, N, K, block_M, block_N, block_K, K_L1, S1, S2, dtype="float16", ac
         T.set_flag("m", "mte1", 0)
         T.set_flag("m", "mte1", 1)
         T.set_flag("fix", "m", 0)
-
 
     @T.macro
     def clear_flag():
@@ -67,7 +67,8 @@ def matmul(M, N, K, block_M, block_N, block_K, K_L1, S1, S2, dtype="float16", ac
                 init_flag()
 
                 for i in T.serial(T.ceildiv(m_num * n_num, core_num)):
-                    T.use_swizzle(i * core_num + cid, M, N, K, block_M, block_N, off=3, in_loop=True)
+                    T.use_swizzle(
+                        i * core_num + cid, M, N, K, block_M, block_N, off=3, in_loop=True)
                     bx = cid // n_num
                     by = cid % n_num
 
@@ -80,9 +81,9 @@ def matmul(M, N, K, block_M, block_N, block_K, K_L1, S1, S2, dtype="float16", ac
                     T.wait_flag("fix", "m", 0)
                     for k in T.serial(loop_k):
                         if k < loop_k - 1:
-                            T.wait_flag("mte1", "mte2", (k+1) % S1)
-                            T.copy(A[bx * block_M, (k+1) * K_L1], A_L1[(k+1) % S1, :, :])
-                            T.copy(B[(k+1) * K_L1, by * block_N], B_L1[(k+1) % S1, :, :])
+                            T.wait_flag("mte1", "mte2", (k + 1) % S1)
+                            T.copy(A[bx * block_M, (k + 1) * K_L1], A_L1[(k + 1) % S1, :, :])
+                            T.copy(B[(k + 1) * K_L1, by * block_N], B_L1[(k + 1) % S1, :, :])
                             T.set_flag("mte2", "mte1", (k + 1) % S1)
 
                         loop_kk = T.ceildiv(K_L1, block_K)
@@ -127,7 +128,6 @@ a = torch.randn(M, K).half().npu()
 b = torch.randn(K, N).half().npu()
 
 print("init successful!")
-
 
 c = func(a, b)
 ref_c = a @ b

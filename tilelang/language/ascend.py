@@ -370,15 +370,21 @@ def reduce_sum(out: Buffer, buffer: Buffer, tmp: Buffer, dim: int):
 
     return reduce(out, buffer, tmp, "reduce_sum", dim)
 
+
 _pipe = Literal["fix", "mte1", "mte2", "mte3", "m", "v"]
 
 
 def set_flag(src: _pipe, dst: _pipe, eventId: int):
-    return T.call_extern("handle", f"AscendC::SetFlag<AscendC::HardEvent::{src.upper()}_{dst.upper()}>", eventId)
+    return T.call_extern("handle",
+                         f"AscendC::SetFlag<AscendC::HardEvent::{src.upper()}_{dst.upper()}>",
+                         eventId)
 
 
 def wait_flag(src: _pipe, dst: _pipe, eventId: int):
-    return T.call_extern("handle", f"AscendC::WaitFlag<AscendC::HardEvent::{src.upper()}_{dst.upper()}>", eventId)
+    return T.call_extern("handle",
+                         f"AscendC::WaitFlag<AscendC::HardEvent::{src.upper()}_{dst.upper()}>",
+                         eventId)
+
 
 def pipe_barrier(pipe: _pipe):
     return T.call_extern("handle", f"AscendC::PipeBarrier<PIPE_{pipe.upper()}>")

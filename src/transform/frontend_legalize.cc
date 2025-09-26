@@ -33,7 +33,6 @@ namespace tl {
 
 using namespace tir;
 
-
 class SwizzleFinder : public StmtExprVisitor {
 public:
   void VisitExpr_(const CallNode *op) {

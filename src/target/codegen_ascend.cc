@@ -720,14 +720,16 @@ void CodeGenTileLangAscend::VisitExpr_(const CallNode *op, std::ostream &os) {
         const std::string replacement = block_id_ + '_';
         const size_t block_len = block_id_.length();
         while ((pos = expr.find(block_id_, pos)) != std::string::npos) {
-            expr.replace(pos, block_len, replacement);
-            pos += replacement.length();
+          expr.replace(pos, block_len, replacement);
+          pos += replacement.length();
         }
       }
-      this->stream << "auto " << this->block_id_ << " = " << op_name << "(" << expr << ");\n";
+      this->stream << "auto " << this->block_id_ << " = " << op_name << "("
+                   << expr << ");\n";
       if (op->args.size() > 2) {
         this->PrintIndent();
-        this->stream << "if (" << this->block_id_ << " >= " << PrintExpr(op->args[2]) << ") continue;\n";
+        this->stream << "if (" << this->block_id_
+                     << " >= " << PrintExpr(op->args[2]) << ") continue;\n";
       }
     }
 
@@ -798,13 +800,15 @@ void CodeGenTileLangAscend::VisitStmt_(const AttrStmtNode *op) {
       auto current_block_id = this->block_id_;
       if (this->use_swizzle_) {
         current_block_id = current_block_id + "_";
-      } 
-      this->stream << "auto " << current_block_id << " = AscendC::GetBlockIdx();\n";
+      }
+      this->stream << "auto " << current_block_id
+                   << " = AscendC::GetBlockIdx();\n";
       this->PrintIndent();
       this->stream << "if ASCEND_IS_AIV {\n";
       this->PrintIndent();
       this->PrintIndent();
-      this->stream << current_block_id << " = " << current_block_id << " / 2;\n";
+      this->stream << current_block_id << " = " << current_block_id
+                   << " / 2;\n";
       this->PrintIndent();
       this->stream << "}\n";
 

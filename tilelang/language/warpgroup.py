@@ -5,9 +5,8 @@
 from tvm.script.ir_builder.tir.frame import TIRFrame
 from tvm._ffi import register_object
 from tilelang import _ffi_api
-from .kernel import get_thread_bindings, get_thread_extents, FrameStack
-from typing import List, Optional
-from tvm.tir import call_extern
+from .kernel import get_thread_bindings, get_thread_extents
+from typing import List
 import threading
 
 
@@ -62,7 +61,6 @@ def WarpSpecialize(*warp_group_idx):
 ws = WarpSpecialize
 
 _local = threading.local()
-
 
 
 @register_object("tl.ScopeFrame")

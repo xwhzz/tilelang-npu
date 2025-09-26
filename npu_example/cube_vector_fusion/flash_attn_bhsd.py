@@ -33,7 +33,6 @@ def flash_attention_fwd(
             K: T.Tensor(shape, dtype),  # type: ignore
             V: T.Tensor(shape, dtype),  # type: ignore
             Output: T.Tensor(shape, dtype),  # type: ignore
-
             workspace_1: T.Tensor([block_num, block_M, block_N], accum_dtype),
             workspace_2: T.Tensor([block_num, block_M, block_N], dtype),
             workspace_3: T.Tensor([block_num, block_M, dim], accum_dtype),
