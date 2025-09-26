@@ -416,70 +416,31 @@ void CodeGenTileLangAscend::VisitExpr_(const CallNode *op, std::ostream &os) {
 
       if (op_name.find("copy_l0c_to_gm") != std::string::npos) {
         this->PrintIndent();
-        // this->stream << "auto " << src_var_id << "_ = " << src_var_id <<
-        // ".GetWithOffset<"
-        //              << getType(src_type) << ">(0, " << src_offset << ");\n";
         this->stream << op_name << "(" << dst_var_id << "[" << dst_offset
                      << "], " << src_var_id << "[" << src_offset << "], "
                      << PrintExpr(op->args[3]) << ");\n";
       } else if (op_name.find("copy_gm_to_l1") != std::string::npos) {
-        // this->stream << "auto " << dst_var_id << "_ = " << dst_var_id <<
-        // ".GetWithOffset<"
-        //              << getType(dst_type) << ">(0, " << dst_offset << ");\n";
         this->PrintIndent();
         this->stream << op_name << "(" << dst_var_id << "[" << dst_offset
                      << "], " << src_var_id << "[" << src_offset << "]);\n";
       } else if (op_name.find("copy_l1_to_l0a") != std::string::npos) {
-
-        auto type = getType(src_type);
-        this->PrintIndent();
-        this->stream << "auto " << src_var_id << "_ = " << src_var_id << ".Get<"
-                     << type << ">();\n";
-        this->PrintIndent();
-        // this->stream << "auto " << dst_var_id << "_ = " << dst_var_id <<
-        // ".Get<"
-        //              << type << ">();\n";
         this->PrintIndent();
         this->stream << op_name << "(" << dst_var_id << "[" << dst_offset
-                     << "], " << src_var_id << "_[" << src_offset << "]);\n";
+                     << "], " << src_var_id << "[" << src_offset << "]);\n";
       } else if (op_name.find("copy_l1_to_l0b") != std::string::npos) {
-
-        auto type = getType(src_type);
         this->PrintIndent();
-        this->stream << "auto " << src_var_id << "_ = " << src_var_id << ".Get<"
-                     << type << ">();\n";
-        this->PrintIndent();
-        this->stream << "auto " << dst_var_id << "_ = " << dst_var_id << ".Get<"
-                     << type << ">();\n";
-        this->PrintIndent();
-
-        this->stream << op_name << "(" << dst_var_id << "_[" << dst_offset
-                     << "], " << src_var_id << "_[" << src_offset << "]);\n";
+        this->stream << op_name << "(" << dst_var_id << "[" << dst_offset
+                     << "], " << src_var_id << "[" << src_offset << "]);\n";
       } else if (op_name.find("copy_gm_to_ub") != std::string::npos) {
         this->PrintIndent();
-        // this->stream << op_name << "(" << dst_var_id << "[" << dst_offset <<
-        // "], " << src_var_id << "[" << src_offset << "]);\n";
         this->stream << op_name << "(" << dst_var_id << "[" << dst_offset
                      << "], " << src_var_id << "[" << src_offset << "], "
                      << PrintExpr(op->args[3]) << ");\n";
       } else if (op_name.find("copy_ub_to_gm") != std::string::npos) {
-        // this->stream << "auto " << src_var_id << "_ = " << src_var_id <<
-        // ".GetWithOffset<"
-        //              << getType(src_type) << ">(0, " << src_offset << "/
-        //              2);\n";
         this->PrintIndent();
         this->stream << op_name << "(" << dst_var_id << "[" << dst_offset
                      << "], " << src_var_id << "[" << src_offset << "]);\n";
       } else if (op_name.find("copy_ub_to_ub") != std::string::npos) {
-        // this->stream << "auto " << dst_var_id << "_1 = " << dst_var_id <<
-        // ".GetWithOffset<"
-        //              << getType(dst_type) << ">(0, " << dst_offset << "/
-        //              2);\n";
-        // this->PrintIndent();
-        // this->stream << "auto " << src_var_id << "_2 = " << src_var_id <<
-        // ".GetWithOffset<"
-        //              << getType(src_type) << ">(0, " << src_offset << "/
-        //              2);\n";
         this->PrintIndent();
         this->stream << op_name << "(" << dst_var_id << "[" << dst_offset
                      << "], " << src_var_id << "[" << src_offset << "]);\n";
@@ -490,8 +451,6 @@ void CodeGenTileLangAscend::VisitExpr_(const CallNode *op, std::ostream &os) {
     } else if (op_name == "npu.fill") {
       this->PrintIndent();
     } else if (op_name.find("mma") != std::string::npos) {
-
-      this->PrintIndent();
       auto a_var = op->args[1].as<CallNode>()->args[1].as<VarNode>();
       auto b_var = op->args[2].as<CallNode>()->args[1].as<VarNode>();
       auto c_var = op->args[3].as<CallNode>()->args[1].as<VarNode>();
@@ -504,76 +463,21 @@ void CodeGenTileLangAscend::VisitExpr_(const CallNode *op, std::ostream &os) {
       auto b_name = var_idmap_[b_var];
       auto c_name = var_idmap_[c_var];
 
-      auto src_type = op->args[1].as<CallNode>()->args[0].as<CallNode>()->dtype;
-      auto dst_type = op->args[3].as<CallNode>()->args[0].as<CallNode>()->dtype;
-
-      stream << "{\n";
-      int func_scope = this->BeginScope();
       this->PrintIndent();
-      this->stream << "auto " << a_name << "_ = " << a_name << ".Get<"
-                   << getType(src_type) << ">();\n";
-      this->PrintIndent();
-      this->stream << "auto " << b_name << "_ = " << b_name << ".Get<"
-                   << getType(src_type) << ">();\n";
-      auto init = Downcast<Bool>(op->args[9])->value;
-      if (!init) {
-        this->PrintIndent();
-        this->stream << "auto " << c_name << "_ = " << c_name << ".Get<"
-                     << getType(dst_type) << ">();\n";
-      } else {
-        this->PrintIndent();
-        this->stream << "auto " << c_name << "_ = " << c_name << ".Get<"
-                     << getType(dst_type) << ">();\n";
-      }
-      this->PrintIndent();
-      this->stream << op_name << "(" << a_name << "_[" << a_offset << "],"
-                   << b_name << "_[" << b_offset << "]," << c_name << "_["
-                   << c_offset << "]);\n";
-      this->EndScope(func_scope);
-      this->PrintIndent();
-      this->stream << "}\n";
-    } else if (op_name.find("tile_add") != std::string::npos) {
-      this->PrintIndent();
-      auto a_var = op->args[1].as<CallNode>()->args[1].as<VarNode>();
-      auto b_var = op->args[2].as<CallNode>()->args[1].as<VarNode>();
-      auto c_var = op->args[3].as<CallNode>()->args[1].as<VarNode>();
-
-      auto a_offset = PrintExpr(op->args[1].as<CallNode>()->args[2]);
-      auto b_offset = PrintExpr(op->args[2].as<CallNode>()->args[2]);
-      auto c_offset = PrintExpr(op->args[3].as<CallNode>()->args[2]);
-
-      auto a_name = var_idmap_[a_var];
-      auto b_name = var_idmap_[b_var];
-      auto c_name = var_idmap_[c_var];
-
-      auto src_type = op->args[1].as<CallNode>()->args[0].as<CallNode>()->dtype;
-
-      stream << "{\n";
-      int func_scope = this->BeginScope();
-      this->PrintIndent();
-      this->stream << "auto " << a_name << "_ = " << a_name << ".Get<"
-                   << getType(src_type) << ">();\n";
-      this->PrintIndent();
-      this->stream << "auto " << b_name << "_ = " << b_name << ".Get<"
-                   << getType(src_type) << ">();\n";
-      if (c_name != a_name && c_name != b_name) {
-        this->PrintIndent();
-        this->stream << "auto " << c_name << "_ = " << c_name << ".Get<"
-                     << getType(src_type) << ">();\n";
-      }
-
-      this->PrintIndent();
-      this->stream << op_name << "(" << a_name << "_[" << a_offset << "],"
-                   << b_name << "_[" << b_offset << "]," << c_name << "_["
-                   << c_offset << "]);\n";
-      this->EndScope(func_scope);
-      this->PrintIndent();
-      this->stream << "}\n";
+      this->stream << op_name << "(" << a_name << "[" << a_offset << "],"
+                   << b_name << "[" << b_offset << "]," << c_name << "["
+                   << c_offset << "], " << PrintExpr(op->args[4]) << ");\n";
     } else if (op_name.find("AscendC::CrossCoreWaitFlag") !=
                std::string::npos) {
       this->PrintIndent();
       this->stream << op_name << "(" << PrintExpr(op->args[1]) << ");\n";
     } else if (op_name.find("AscendC::CrossCoreSetFlag") != std::string::npos) {
+      this->PrintIndent();
+      this->stream << op_name << "(" << PrintExpr(op->args[1]) << ");\n";
+    } else if (op_name.find("AscendC::WaitFlag") != std::string::npos) {
+      this->PrintIndent();
+      this->stream << op_name << "(" << PrintExpr(op->args[1]) << ");\n";
+    } else if (op_name.find("AscendC::SetFlag") != std::string::npos) {
       this->PrintIndent();
       this->stream << op_name << "(" << PrintExpr(op->args[1]) << ");\n";
     } else if (op_name.find("Duplicate") != std::string::npos) {
@@ -690,7 +594,6 @@ void CodeGenTileLangAscend::VisitExpr_(const CallNode *op, std::ostream &os) {
       this->stream << op_name << "(" << var_name << ", "
                    << PrintExpr(op->args[2]) << ");\n";
     } else if (op_name.find("AscendC::ArithProgression") != std::string::npos) {
-      // tvm::Dump(op);
       this->PrintIndent();
       auto var_name = print_buffer_offset(op->args[1].as<CallNode>());
 
@@ -809,6 +712,23 @@ void CodeGenTileLangAscend::VisitExpr_(const CallNode *op, std::ostream &os) {
 
       this->stream << ", " << PrintExpr(op->args[op->args.size() - 1])
                    << ");\n";
+    } else if (op_name.find("thread_block_swizzle") != std::string::npos) {
+      this->PrintIndent();
+      std::string expr = PrintExpr(op->args[1]);
+      if (!block_id_.empty()) {
+        size_t pos = 0;
+        const std::string replacement = block_id_ + '_';
+        const size_t block_len = block_id_.length();
+        while ((pos = expr.find(block_id_, pos)) != std::string::npos) {
+            expr.replace(pos, block_len, replacement);
+            pos += replacement.length();
+        }
+      }
+      this->stream << "auto " << this->block_id_ << " = " << op_name << "(" << expr << ");\n";
+      if (op->args.size() > 2) {
+        this->PrintIndent();
+        this->stream << "if (" << this->block_id_ << " >= " << PrintExpr(op->args[2]) << ") continue;\n";
+      }
     }
 
     else if (op_name.find("gemm_v0") != std::string::npos) {
@@ -875,13 +795,16 @@ void CodeGenTileLangAscend::VisitStmt_(const AttrStmtNode *op) {
     if (iv->thread_tag == "blockIdx.x" && iv->var->name_hint != "_") {
       this->block_id_ = AllocVarID(iv->var.get());
       this->PrintIndent();
-      this->stream << "auto " << this->block_id_
-                   << " = AscendC::GetBlockIdx();\n";
+      auto current_block_id = this->block_id_;
+      if (this->use_swizzle_) {
+        current_block_id = current_block_id + "_";
+      } 
+      this->stream << "auto " << current_block_id << " = AscendC::GetBlockIdx();\n";
       this->PrintIndent();
       this->stream << "if ASCEND_IS_AIV {\n";
       this->PrintIndent();
       this->PrintIndent();
-      this->stream << this->block_id_ << " = " << this->block_id_ << " / 2;\n";
+      this->stream << current_block_id << " = " << current_block_id << " / 2;\n";
       this->PrintIndent();
       this->stream << "}\n";
 
@@ -951,9 +874,9 @@ void CodeGenTileLangAscend::VisitStmt_(const AllocateNode *op) {
   };
 
   if (scope == "wmma.matrix_a") {
-    print_buffer("l0a");
+    print_buffer("ascend_l0a");
   } else if (scope == "wmma.matrix_b") {
-    print_buffer("B2");
+    print_buffer("ascend_l0b");
   } else if (scope == "wmma.accumulator") {
     print_buffer("ascend_l0c");
   } else if (scope == "shared.dyn") {
@@ -1123,6 +1046,9 @@ void CodeGenTileLangAscend::AddFunction(const GlobalVar &gvar,
   auto global_symbol = f->GetAttr<String>(tvm::attr::kGlobalSymbol);
 
   address_map_ = f->GetAttr<Map<Var, PrimExpr>>("address_map").value();
+
+  use_swizzle_ = f->GetAttr<Bool>("use_swizzle").value();
+
   ICHECK(global_symbol.defined())
       << "CodeGenC: Expect PrimFunc to have the global_symbol attribute";
   bool no_alias = f->HasNonzeroAttr(tir::attr::kNoAlias);
@@ -1173,7 +1099,7 @@ void CodeGenTileLangAscend::AddFunction(const GlobalVar &gvar,
     } else {
       CodeGenC::PrintType(GetType(v), stream);
     }
-    stream << ' ' << vid;
+    stream << " " << vid;
   }
   size_t index = 0;
   if (shape_vars.size() != 0) {

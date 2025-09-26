@@ -41,25 +41,25 @@ def do_bench(
     """
     assert return_mode in ["min", "max", "mean", "median"]
     fn()
-    torch.cuda.synchronize()
+    torch.npu.synchronize()
 
     # We maintain a buffer of 256 MB that we clear
     # before each kernel call to make sure that the L2
     # doesn't contain any input data before the run
     if fast_flush:
-        cache = torch.empty(int(256e6 // 4), dtype=torch.int, device="cuda")
+        cache = torch.empty(int(256e6 // 4), dtype=torch.int, device="npu")
     else:
-        cache = torch.empty(int(256e6), dtype=torch.int8, device="cuda")
+        cache = torch.empty(int(256e6), dtype=torch.int8, device="npu")
 
     # Estimate the runtime of the function
-    start_event = torch.cuda.Event(enable_timing=True)
-    end_event = torch.cuda.Event(enable_timing=True)
+    start_event = torch.npu.Event(enable_timing=True)
+    end_event = torch.npu.Event(enable_timing=True)
     start_event.record()
     for _ in range(5):
         cache.zero_()
         fn()
     end_event.record()
-    torch.cuda.synchronize()
+    torch.npu.synchronize()
     estimate_ms = start_event.elapsed_time(end_event) / 5
 
     # compute number of warmup and repeat
@@ -69,8 +69,8 @@ def do_bench(
         n_warmup = _n_warmup
     if _n_repeat > 0:
         n_repeat = _n_repeat
-    start_event = [torch.cuda.Event(enable_timing=True) for i in range(n_repeat)]
-    end_event = [torch.cuda.Event(enable_timing=True) for i in range(n_repeat)]
+    start_event = [torch.npu.Event(enable_timing=True) for i in range(n_repeat)]
+    end_event = [torch.npu.Event(enable_timing=True) for i in range(n_repeat)]
     # Warm-up
     for _ in range(n_warmup):
         fn()
@@ -89,7 +89,7 @@ def do_bench(
         fn()
         end_event[i].record()
     # Record clocks
-    torch.cuda.synchronize()
+    torch.npu.synchronize()
     times = torch.tensor(
         [s.elapsed_time(e) for s, e in zip(start_event, end_event)],
         dtype=torch.float,

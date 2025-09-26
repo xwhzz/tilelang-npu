@@ -175,10 +175,6 @@ public:
     fptr->body = substituter.VisitStmt(f->body);
     fptr->body =
         RemapBufferRewriter::Substitute(fptr->body, substituter.buffer_remap_);
-    auto fn_attr = fptr->attrs.CopyOnWrite();
-    // for (auto op : alloc_ops) {
-    //   int32_t address = addrMapWithBC[op];
-    fn_attr->dict.Set("address_map", substituter.address_map_);
     return f;
   }
 
@@ -206,9 +202,6 @@ private:
                           makeBufferWithLayout(buffer, layout, var_remap_));
         layout_map_.Set(buffer, layout);
       }
-    } else if (op->annotations.count("address_map")) {
-      address_map_ =
-          op->annotations.at("address_map").as<Map<Var, PrimExpr>>().value();
     }
     auto block = Downcast<Block>(arith::IRMutatorWithAnalyzer::VisitStmt_(op));
     auto block_ptr = block.CopyOnWrite();
@@ -482,7 +475,6 @@ private:
   std::unordered_map<Var, Buffer, ObjectPtrHash, ObjectPtrEqual> buffer_map_;
   Map<Var, Var> var_remap_;
   int resource_scope_ = 0;
-  Map<Var, PrimExpr> address_map_;
 };
 
 namespace transform {

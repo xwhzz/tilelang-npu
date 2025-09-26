@@ -116,7 +116,7 @@ def _dtype(buf):
     return type_map[buf.dtype]
 
 
-def npu_gemm(A, B, C, transpose_A=False, transpose_B=False, init=False):
+def npu_gemm(A, B, C, init=False):
 
     def legalize_arguments(arg: Union[Buffer, Var]):
         """Convert let-bound variables to their corresponding buffers.
@@ -164,8 +164,8 @@ def npu_gemm(A, B, C, transpose_A=False, transpose_B=False, init=False):
                 "current only support B as a 2D or higher-order tensor with the last two dimensions being the matrix dimensions"
 
     M, N = C_shape
-    K = A_shape[-2] if transpose_A else A_shape[-1]
-    K_B = B_shape[-1] if transpose_B else B_shape[-2]
+    K = A_shape[-1]
+    K_B = B_shape[-2]
     assert K == K_B, f"T.gemm K shape check failed: K_A = {K}, K_B = {K_B}"
 
     def retrieve_ptr(object: Union[Buffer, BufferRegion], access_type: str = "r") -> PrimExpr:
@@ -192,7 +192,6 @@ def npu_gemm(A, B, C, transpose_A=False, transpose_B=False, init=False):
     Bptr = retrieve_ptr(B, "r")
     Cptr = retrieve_ptr(C, "rw")
 
-    # assert _dtype(A) == _dtype(B), f"gemm A and B dtype mismatch: {_dtype(A)} vs {_dtype(B)}"
     return T.call_extern(
-        "handle", f"tl::ascend::mma<{_dtype(A)}, {_dtype(C)}, {M}, {N}, {K}, {str(init).lower()}>",
-        Aptr, Bptr, Cptr, transpose_A, transpose_B, M, N, K, init)
+        "handle", f"tl::ascend::mma<{_dtype(A)}, {_dtype(C)}, {M}, {N}, {K}>",
+        Aptr, Bptr, Cptr, init)

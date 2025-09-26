@@ -33,13 +33,32 @@ namespace tl {
 
 using namespace tir;
 
+
+class SwizzleFinder : public StmtExprVisitor {
+public:
+  void VisitExpr_(const CallNode *op) {
+    if (op->op.same_as(builtin::call_extern())) {
+      std::string op_name = Downcast<StringImm>(op->args[0])->value;
+      if (op_name.find("thread_block_swizzle") != std::string::npos) {
+        use_swizzle_ = Bool(1);
+      }
+    }
+  }
+
+  Bool use_swizzle_ = Bool(0);
+};
+
 class FrontendLegalizer : public arith::IRMutatorWithAnalyzer {
 public:
   static PrimFunc Substitute(PrimFunc f) {
+    SwizzleFinder swizzle_finder;
+    swizzle_finder(f->body);
     arith::Analyzer analyzer;
     FrontendLegalizer substituter(&analyzer);
     PrimFuncNode *fptr = f.CopyOnWrite();
     fptr->body = substituter.VisitStmt(f->body);
+    auto fn_attr = fptr->attrs.CopyOnWrite();
+    fn_attr->dict.Set("use_swizzle", swizzle_finder.use_swizzle_);
     return f;
   }
 

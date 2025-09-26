@@ -529,6 +529,8 @@ public:
     auto result = collector.Run();
     LayoutInferencer substituter(result, skip_thread_partition, &analyzer);
     fptr->body = substituter.VisitStmt(f->body);
+    auto fn_attr = fptr->attrs.CopyOnWrite();
+    fn_attr->dict.Set("address_map", substituter.address_map_);
     return f;
   }
 
@@ -546,6 +548,10 @@ private:
         ICHECK(result_.layout_map.count(buffer))
             << "Cannot inference fragment layout for " << buffer;
       }
+    }
+    if (op->annotations.count("address_map")) {
+      address_map_ =
+          op->annotations.at("address_map").as<Map<Var, PrimExpr>>().value();
     }
     auto block_ptr = block.CopyOnWrite();
     block_ptr->annotations.Set(attr::kLayoutMap, result_.layout_map);
@@ -626,6 +632,8 @@ private:
   IterVar thread_var_ = IterVar(Range::FromMinExtent(0, 1), Var("v_thread"),
                                 IterVarType::kDataPar);
   bool skip_thread_partition_{false};
+
+  Map<Var, PrimExpr> address_map_;
 };
 
 tvm::transform::Pass LayoutInference() {

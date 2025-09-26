@@ -34,7 +34,7 @@ from .kernel import (
     get_block_binding,  # noqa: F401
     get_block_bindings,  # noqa: F401
 )
-from .warpgroup import ws, rs, set_flag, wait_flag, Scope  # noqa: F401
+from .warpgroup import ws, Scope  # noqa: F401
 from .allocate import (
     alloc_local,  # noqa: F401
     alloc_shared,  # noqa: F401
@@ -67,7 +67,7 @@ from .customize import (
     clamp,  # noqa: F401
     reshape,  # noqa: F401
     view,  # noqa: F401
-    npu_gemm as gemm,  # noqa: F401, F811
+    npu_gemm as mma,  # noqa: F401, F811
 )
 from .logical import any_of, all_of  # noqa: F401
 from .builtin import *  # noqa: F401
@@ -191,23 +191,25 @@ def clear_flag(fmap):
     return _get_inst()
 
 
-def npu_use_swizzle(m, n, k, block_m, block_n, off=1, dir=0):
+def npu_use_swizzle(cid, m, n, k, block_m, block_n, off=1, dir=0, in_loop=False):
     # If order is row, use rasterization2DRow, otherwise use rasterization2DColumn
     # The panel size is the number of threads in a warp
     # Use to improve the L2 Cache Locality
     # device_func = ("rasterization2DRow" if order == "row" else "rasterization2DColumn")
-    return attr(
-        None, "threadblock_swizzle_pattern",
-        f"tl::ascend::thread_block_swizzle<{m}, {n}, {k}, {block_m}, {block_n}, {off}, {dir}>")
+    assert m % block_m == 0 and n % block_n == 0, "m and n must be divisible by block_m and block_n"
+    if in_loop:
+        return call_extern("handle", f"tl::ascend::thread_block_swizzle<{m}, {n}, {k}, {block_m}, {block_n}, {off}, {dir}>", cid, m // block_m * n // block_n)
+    else:
+        return call_extern("handle", f"tl::ascend::thread_block_swizzle<{m}, {n}, {k}, {block_m}, {block_n}, {off}, {dir}>", cid)
 
 
 del use_swizzle
 
 
 # let npu_use_swizzle is aliased to use_swizzle
-def use_swizzle(m, n, k, block_m, block_n, off=1, dir=0):
+def use_swizzle(cid, m, n, k, block_m, block_n, off=1, dir=0, in_loop=False):
     """Alias for npu_use_swizzle with proper signature for function hints."""
-    return npu_use_swizzle(m, n, k, block_m, block_n, off, dir)
+    return npu_use_swizzle(cid, m, n, k, block_m, block_n, off, dir, in_loop)
 
 
 def annotate_address(address_map: Dict):

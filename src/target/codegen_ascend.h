@@ -86,6 +86,8 @@ private:
   Map<Var, PrimExpr> address_map_;
 
   Map<String, PrimExpr> address_offset_;
+
+  bool use_swizzle_{false};
 };
 
 } // namespace codegen
